@@ -1,0 +1,19 @@
+node_modules
+.env
+.env.*
+!.env.example
+dist
+build
+coverage
+
+# logs
+logs
+*.log
+
+# docker volumes / db
+mongo-data
+mosquitto/data
+
+# OS
+.DS_Store
+Thumbbs.db

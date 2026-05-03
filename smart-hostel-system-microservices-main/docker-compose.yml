@@ -1,0 +1,163 @@
+services:
+  mongo:
+    image: mongo
+    container_name: mongo
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_URL: http://localhost:4000
+    container_name: frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+    restart: always
+
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: api-gateway
+    ports:
+      - "4000:4000"
+    depends_on:
+      - auth
+      - rooms
+      - devices
+      - alerts
+      - analytics
+    env_file:
+      - .env
+    environment:
+      PORT: 4000
+      AUTH_SERVICE_URL: http://auth:5005
+      ALERTS_SERVICE_URL: http://alerts:5003
+      ANALYTICS_SERVICE_URL: http://analytics:5004
+      ROOMS_SERVICE_URL: http://rooms:5001
+      DEVICES_SERVICE_URL: http://devices:5002
+      ALLOWED_ORIGINS: http://localhost:3000
+    restart: always
+
+  rooms:
+    build: ./services/rooms
+    container_name: rooms
+    ports:
+      - "5001:5001"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+    restart: always
+
+  devices:
+    build: ./services/devices
+    container_name: devices
+    ports:
+      - "5002:5002"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mqtt:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+      MQTT_URL: mqtt://mqtt:1883
+      MQTT_USER: hostel_device
+      MQTT_PASS: secret123
+    restart: always
+
+  alerts:
+    build: ./services/alerts
+    container_name: alerts
+    ports:
+      - "5003:5003"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+    restart: always
+
+  analytics:
+    build: ./services/analytics
+    container_name: analytics
+    ports:
+      - "5004:5004"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mqtt:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+      MQTT_URL: mqtt://mqtt:1883
+      MQTT_USER: hostel_device
+      MQTT_PASS: secret123
+    restart: always
+
+  auth:
+    build: ./services/auth
+    container_name: auth
+    ports:
+      - "5005:5005"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+    restart: always
+
+  mqtt:
+    image: eclipse-mosquitto
+    container_name: mqtt
+    ports:
+      - "1883:1883"
+    command: sh -c "chown mosquitto:mosquitto /mosquitto/config/passwd && chmod 0700 /mosquitto/config/passwd && exec mosquitto -c /mosquitto/config/mosquitto.conf"
+    volumes:
+      - ./services/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./services/mqtt/passwd:/mosquitto/config/passwd
+      - mqtt_data:/mosquitto/data
+    user: "0"  
+    healthcheck:
+      test: ["CMD-SHELL", "pidof mosquitto >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: always
+
+  seed:
+    build: ./services/seed
+    container_name: seed
+    depends_on:
+      - mongo
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+    profiles:
+      - seed
+
+volumes:
+  mongo_data:
+  mqtt_data:
