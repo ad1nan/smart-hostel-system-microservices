@@ -46,9 +46,16 @@ function App() {
   const [roomAnalytics,      setRoomAnalytics]      = useState([]);
   const [deviceAnalytics,    setDeviceAnalytics]    = useState([]);
   const [timeSeriesAnalytics,setTimeSeriesAnalytics]= useState([]);
+  const [forecastData,       setForecastData]       = useState([]);
+  const [roomCosts,          setRoomCosts]          = useState([]);
+  const [peakHours,          setPeakHours]          = useState([]);
+  const [dailyReports,       setDailyReports]       = useState([]);
+  const [weeklyReports,      setWeeklyReports]      = useState([]);
+  const [ratePerKwh,         setRatePerKwh]         = useState(() => Number(localStorage.getItem("rate_per_kwh") || 8));
   const [selectedRoom,       setSelectedRoom]       = useState(null);
   const [kpi, setKpi] = useState({ totalEnergy: 0, activeDevices: 0, activeAlerts: 0, topRoom: "" });
   const fetchInFlight = useRef(false);
+  const analyticsFetchInFlight = useRef(false);
 
   const fetchData = useCallback(async () => {
     if (fetchInFlight.current) return;
@@ -80,12 +87,48 @@ function App() {
     }
   }, []);
 
+  const fetchAdvancedAnalytics = useCallback(async () => {
+    if (analyticsFetchInFlight.current) return;
+    analyticsFetchInFlight.current = true;
+    try {
+      const [
+        forecastRes,
+        costsRes,
+        peakRes,
+        dailyRes,
+        weeklyRes
+      ] = await Promise.all([
+        API.get("/analytics/forecast", { params: { method: "linear" } }),
+        API.get("/analytics/room-costs", { params: { ratePerKwh, windowHours: 24 } }),
+        API.get("/analytics/peak-hours"),
+        API.get("/analytics/reports/daily", { params: { limit: 7 } }),
+        API.get("/analytics/reports/weekly", { params: { limit: 6 } })
+      ]);
+      setForecastData(forecastRes.data || []);
+      setRoomCosts(costsRes.data || []);
+      setPeakHours(peakRes.data || []);
+      setDailyReports(dailyRes.data || []);
+      setWeeklyReports(weeklyRes.data || []);
+    } catch (err) {
+      console.error("Advanced analytics fetch error:", err.response?.data || err.message);
+    } finally {
+      analyticsFetchInFlight.current = false;
+    }
+  }, [ratePerKwh]);
+
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchData();
     const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
   }, [fetchData, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchAdvancedAnalytics();
+    const interval = setInterval(fetchAdvancedAnalytics, 60000);
+    return () => clearInterval(interval);
+  }, [fetchAdvancedAnalytics, isAuthenticated]);
 
   const logout = () => {
     localStorage.removeItem("token");
@@ -101,6 +144,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("dash_layout", compactView ? "compact" : "expanded");
   }, [compactView]);
+
+  useEffect(() => {
+    localStorage.setItem("rate_per_kwh", String(ratePerKwh));
+  }, [ratePerKwh]);
 
   // Energy helpers
   const getRoomEnergy = useCallback((roomId) => {
@@ -259,6 +306,46 @@ function App() {
     ]
   };
 
+  const forecastChartData = {
+    labels: forecastData.map((f) => f.roomName),
+    datasets: [{
+      label: "Next Hour Forecast (Wh)",
+      data: forecastData.map((f) => Number(f.forecastNextHourWh || 0)),
+      backgroundColor: "#22c55e"
+    }]
+  };
+
+  const peakChartData = {
+    labels: peakHours.map((h) => h.label),
+    datasets: [{
+      label: "Avg Usage (Wh)",
+      data: peakHours.map((h) => Number(h.avgWh || 0)),
+      backgroundColor: peakHours.map((h) =>
+        h.band === "high" ? "#ef4444" : h.band === "idle" ? "#334155" : "#3b82f6"
+      )
+    }]
+  };
+
+  const downloadReport = async (granularity, format) => {
+    try {
+      const response = await API.get(`/analytics/reports/${granularity}/export`, {
+        params: { format, ratePerKwh, limit: granularity === "daily" ? 14 : 12 },
+        responseType: "blob"
+      });
+      const blob = new Blob([response.data], { type: response.headers["content-type"] });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${granularity}-energy-report.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Report download failed:", err.response?.data || err.message);
+    }
+  };
+
   if (!isAuthenticated) return <Login onLogin={() => setIsAuthenticated(true)} />;
 
   return (
@@ -317,6 +404,17 @@ function App() {
       {/* ── EXECUTIVE ANALYTICS ── */}
       <section>
         <h2 className="section-title">Executive Analytics</h2>
+        <div className="rate-control">
+          <label htmlFor="ratePerKwh">Electricity Rate (Rs/kWh)</label>
+          <input
+            id="ratePerKwh"
+            type="number"
+            min="1"
+            step="0.5"
+            value={ratePerKwh}
+            onChange={(e) => setRatePerKwh(Number(e.target.value) || 1)}
+          />
+        </div>
         <div className="insight-grid">
           <div className="insight-card">
             <span>Energy Trend</span>
@@ -360,7 +458,9 @@ function App() {
                 <span>{room.roomEnergy.toFixed(1)} Wh</span>
               </div>
               <div className="cell-meta">
-                <span>{room.activeCount}/{room.deviceList.length || 0} active</span>
+                <span>
+                  F{room.floor || "-"} | {room.occupancy ?? 0}/{room.capacity ?? 0} occupants
+                </span>
                 <div className="device-dots">
                   {(room.deviceList || []).slice(0, 8).map((d) => (
                     <span
@@ -423,6 +523,43 @@ function App() {
           <h2>Device Type Consumption</h2>
           <Bar data={deviceChartData} />
         </div>
+        <div className="card chart-card wide">
+          <h2>Peak Hours (24h Heatmap Bars)</h2>
+          <Bar data={peakChartData} />
+        </div>
+        <div className="card chart-card wide">
+          <h2>Forecast Next Hour by Room</h2>
+          <Bar data={forecastChartData} />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="section-title">Energy Cost per Room (24h)</h2>
+        <div className="table-wrap">
+          <table className="elite-table">
+            <thead>
+              <tr>
+                <th>Room</th>
+                <th>Floor</th>
+                <th>Usage (Wh)</th>
+                <th>Cost (Rs)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roomCosts
+                .sort((a, b) => b.costINR - a.costINR)
+                .slice(0, 12)
+                .map((row) => (
+                  <tr key={row.roomId}>
+                    <td>{row.roomName}</td>
+                    <td>{row.floor ?? "-"}</td>
+                    <td>{row.totalWh.toFixed(2)}</td>
+                    <td>{row.costINR.toFixed(2)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section>
@@ -448,6 +585,36 @@ function App() {
               ))}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section>
+        <div className="section-header">
+          <h2 className="section-title">Daily / Weekly Reports</h2>
+          <div className="report-actions">
+            <button className="toggle-pill" onClick={() => downloadReport("daily", "csv")}>Daily CSV</button>
+            <button className="toggle-pill" onClick={() => downloadReport("daily", "pdf")}>Daily PDF</button>
+            <button className="toggle-pill" onClick={() => downloadReport("weekly", "csv")}>Weekly CSV</button>
+            <button className="toggle-pill" onClick={() => downloadReport("weekly", "pdf")}>Weekly PDF</button>
+          </div>
+        </div>
+        <div className="report-grid">
+          <div className="card">
+            <h3>Last 7 Days</h3>
+            {(dailyReports || []).slice(0, 7).map((r) => (
+              <p key={r._id}>
+                {new Date(r.periodStart).toLocaleDateString()} - {Number(r.totalUsageWh || 0).toFixed(2)} Wh
+              </p>
+            ))}
+          </div>
+          <div className="card">
+            <h3>Last 6 Weeks</h3>
+            {(weeklyReports || []).slice(0, 6).map((r) => (
+              <p key={r._id}>
+                {new Date(r.periodStart).toLocaleDateString()} - {Number(r.totalUsageWh || 0).toFixed(2)} Wh
+              </p>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -480,6 +647,9 @@ function App() {
                     </span>
                     {device.power != null && (
                       <span className="device-power">{device.power}W</span>
+                    )}
+                    {device.location?.label && (
+                      <span className="device-power">{device.location.label}</span>
                     )}
                   </div>
                   {isAdmin ? (

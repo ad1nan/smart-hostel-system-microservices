@@ -186,6 +186,69 @@ app.get("/analytics/timeseries", authMiddleware, async (req, res) => {
   }
 });
 
+app.get("/analytics/forecast", authMiddleware, async (req, res) => {
+  try {
+    const response = await axios.get(`${ANALYTICS_SERVICE}/analytics/forecast`, { params: req.query });
+    res.json(response.data);
+  } catch (err) {
+    console.error("Forecast error:", err.message);
+    res.status(500).json({ error: "Analytics forecast error" });
+  }
+});
+
+app.get("/analytics/room-costs", authMiddleware, async (req, res) => {
+  try {
+    const response = await axios.get(`${ANALYTICS_SERVICE}/analytics/room-costs`, { params: req.query });
+    res.json(response.data);
+  } catch (err) {
+    console.error("Room costs error:", err.message);
+    res.status(500).json({ error: "Analytics room costs error" });
+  }
+});
+
+app.get("/analytics/peak-hours", authMiddleware, async (req, res) => {
+  try {
+    const response = await axios.get(`${ANALYTICS_SERVICE}/analytics/peak-hours`);
+    res.json(response.data);
+  } catch (err) {
+    console.error("Peak hours error:", err.message);
+    res.status(500).json({ error: "Analytics peak-hours error" });
+  }
+});
+
+app.get("/analytics/reports/:granularity", authMiddleware, async (req, res) => {
+  try {
+    const response = await axios.get(
+      `${ANALYTICS_SERVICE}/analytics/reports/${req.params.granularity}`,
+      { params: req.query }
+    );
+    res.json(response.data);
+  } catch (err) {
+    console.error("Reports error:", err.message);
+    res.status(500).json({ error: "Analytics reports error" });
+  }
+});
+
+app.get("/analytics/reports/:granularity/export", authMiddleware, async (req, res) => {
+  try {
+    const response = await axios.get(
+      `${ANALYTICS_SERVICE}/analytics/reports/${req.params.granularity}/export`,
+      {
+        params: req.query,
+        responseType: "arraybuffer"
+      }
+    );
+    res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
+    if (response.headers["content-disposition"]) {
+      res.setHeader("Content-Disposition", response.headers["content-disposition"]);
+    }
+    res.send(response.data);
+  } catch (err) {
+    console.error("Reports export error:", err.message);
+    res.status(500).json({ error: "Analytics report export error" });
+  }
+});
+
 /* ---------- HEALTH ---------- */
 app.get("/health", (req, res) => res.json({ status: "ok", service: "api-gateway" }));
 app.get("/", (req, res) => res.send("API Gateway running"));

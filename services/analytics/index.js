@@ -7,6 +7,7 @@ const cors = require("cors");
 const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
+const { startReportScheduler } = require("./reportScheduler");
 
 app.use("/analytics", require("./routes/analyticsRoutes"));
 
@@ -32,6 +33,7 @@ const connectMongo = async (attempt = 1) => {
 connectMongo()
   .then(() => {
     require("./mqttSubscriber");
+    startReportScheduler();
     app.listen(PORT, () => console.log(`Analytics Service running on ${PORT}`));
   })
   .catch((err) => {
