@@ -15,7 +15,7 @@ import {
   LineElement,
   PointElement
 } from "chart.js";
-import { Pie, Bar, Line } from "react-chartjs-2";
+import { Doughnut, Bar, Line } from "react-chartjs-2";
 
 ChartJS.register(
   ArcElement, BarElement, CategoryScale,
@@ -27,6 +27,8 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
     !!localStorage.getItem("token")
   );
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("dash_theme") !== "light");
+  const [compactView, setCompactView] = useState(() => localStorage.getItem("dash_layout") === "compact");
 
   // Decode token once; re-derive on every render so logout clears it immediately
   let user = null;
@@ -90,22 +92,26 @@ function App() {
     setIsAuthenticated(false);
   };
 
+  useEffect(() => {
+    localStorage.setItem("dash_theme", darkMode ? "dark" : "light");
+    document.body.style.background = darkMode ? "#0f172a" : "#e2e8f0";
+    document.body.style.color = darkMode ? "#f8fafc" : "#0f172a";
+  }, [darkMode]);
+
+  useEffect(() => {
+    localStorage.setItem("dash_layout", compactView ? "compact" : "expanded");
+  }, [compactView]);
+
   // Energy helpers
-  const getRoomEnergy = (roomId) => {
+  const getRoomEnergy = useCallback((roomId) => {
     const row = roomAnalytics.find(
       (r) => r.roomId === roomId || r.roomId?._id === roomId || r._id === roomId
     );
     return Number(row?.totalUsage ?? row?.totalEnergy ?? 0);
-  };
+  }, [roomAnalytics]);
 
   const energies   = rooms.map((r) => getRoomEnergy(r._id));
   const maxEnergy  = Math.max(...energies, 1);
-  const getHeatColor = (v) => {
-    const ratio = v / maxEnergy;
-    if (ratio < 0.3) return "#22c55e";
-    if (ratio < 0.6) return "#f97316";
-    return "#ef4444";
-  };
 
   // KPI
   useEffect(() => {
@@ -145,10 +151,6 @@ function App() {
   };
 
   // Chart data
-  const roomChartData = {
-    labels: rooms.map((r) => r.name),
-    datasets: [{ label: "Energy (Wh)", data: energies, backgroundColor: "#22c55e" }]
-  };
   const deviceChartData = {
     labels: deviceAnalytics.map((d) => d.deviceType),
     datasets: [{
@@ -172,10 +174,95 @@ function App() {
     [alerts]
   );
 
+  const roomDevicesMap = useMemo(() => {
+    const map = new Map();
+    devices.forEach((device) => {
+      const roomId = typeof device.roomId === "object" ? device.roomId?._id : device.roomId;
+      if (!roomId) return;
+      if (!map.has(roomId)) map.set(roomId, []);
+      map.get(roomId).push(device);
+    });
+    return map;
+  }, [devices]);
+
+  const floorRooms = useMemo(() => {
+    const sortedRooms = [...rooms].sort((a, b) => {
+      const aNum = Number(String(a.name || "").replace(/[^\d]/g, ""));
+      const bNum = Number(String(b.name || "").replace(/[^\d]/g, ""));
+      if (Number.isNaN(aNum) || Number.isNaN(bNum)) return String(a.name).localeCompare(String(b.name));
+      return aNum - bNum;
+    });
+
+    return sortedRooms.map((room, idx) => {
+      const deviceList = roomDevicesMap.get(room._id) || [];
+      const activeCount = deviceList.filter((d) => d.status).length;
+      const roomEnergy = getRoomEnergy(room._id);
+      const intensity = Math.min(1, roomEnergy / maxEnergy);
+      return {
+        ...room,
+        roomEnergy,
+        deviceList,
+        activeCount,
+        intensity,
+        gridRow: Math.floor(idx / 4) + 1,
+        gridCol: (idx % 4) + 1
+      };
+    });
+  }, [rooms, roomDevicesMap, maxEnergy, getRoomEnergy]);
+
+  const energySeries = useMemo(
+    () => timeSeriesAnalytics.map((t) => Number(t.totalUsage ?? t.totalEnergy ?? 0)),
+    [timeSeriesAnalytics]
+  );
+
+  const totalEnergyNow = energySeries[energySeries.length - 1] || 0;
+  const totalEnergyPrev = energySeries[energySeries.length - 2] || 0;
+  const trendDelta = totalEnergyNow - totalEnergyPrev;
+  const trendDirection = trendDelta > 0 ? "up" : trendDelta < 0 ? "down" : "flat";
+
+  const totalDevices = devices.length;
+  const offlineDevices = Math.max(totalDevices - kpi.activeDevices, 0);
+  const avgEnergyPerRoom = rooms.length ? Number(kpi.totalEnergy) / rooms.length : 0;
+  const criticalAlerts = alerts.filter((a) => String(a.level).toLowerCase() === "critical").length;
+
+  const topRoomRows = useMemo(() => {
+    return [...rooms]
+      .map((room) => ({
+        id: room._id,
+        name: room.name,
+        energy: getRoomEnergy(room._id),
+        devices: (roomDevicesMap.get(room._id) || []).length
+      }))
+      .sort((a, b) => b.energy - a.energy)
+      .slice(0, 6);
+  }, [rooms, roomDevicesMap, getRoomEnergy]);
+
+  const statusDoughnutData = {
+    labels: ["Active Devices", "Inactive Devices"],
+    datasets: [
+      {
+        data: [kpi.activeDevices, offlineDevices],
+        backgroundColor: ["#22c55e", "#64748b"],
+        borderColor: "transparent"
+      }
+    ]
+  };
+
+  const roomBarData = {
+    labels: topRoomRows.map((r) => r.name),
+    datasets: [
+      {
+        label: "Energy (Wh)",
+        data: topRoomRows.map((r) => Number(r.energy.toFixed(2))),
+        backgroundColor: "#3b82f6"
+      }
+    ]
+  };
+
   if (!isAuthenticated) return <Login onLogin={() => setIsAuthenticated(true)} />;
 
   return (
-    <div className="app">
+    <div className={`app ${darkMode ? "theme-dark" : "theme-light"} ${compactView ? "compact" : "expanded"}`}>
 
       {/* ── HEADER ── */}
       <header className="dash-header">
@@ -184,6 +271,14 @@ function App() {
           <h1 className="dash-title">Smart Hostel</h1>
         </div>
         <div className="dash-header-right">
+          <div className="view-switches">
+            <button className="toggle-pill" onClick={() => setDarkMode((prev) => !prev)}>
+              {darkMode ? "Dark" : "Light"} Mode
+            </button>
+            <button className="toggle-pill" onClick={() => setCompactView((prev) => !prev)}>
+              {compactView ? "Compact" : "Expanded"}
+            </button>
+          </div>
           <div className="user-pill">
             <span className={`role-badge ${isAdmin ? "admin" : "user"}`}>
               {isAdmin ? "Admin" : "User"}
@@ -194,7 +289,7 @@ function App() {
         </div>
       </header>
 
-      {/* ── KPI ── */}
+      {/* ── KPI STRIP ── */}
       <section>
         <h2 className="section-title">Overview</h2>
         <div className="kpi-container">
@@ -216,6 +311,68 @@ function App() {
             <h3>Top Room</h3>
             <p style={{ fontSize: 16 }}>{kpi.topRoom || "N/A"}</p>
           </div>
+        </div>
+      </section>
+
+      {/* ── EXECUTIVE ANALYTICS ── */}
+      <section>
+        <h2 className="section-title">Executive Analytics</h2>
+        <div className="insight-grid">
+          <div className="insight-card">
+            <span>Energy Trend</span>
+            <strong className={`trend-${trendDirection}`}>
+              {trendDelta >= 0 ? "+" : ""}
+              {trendDelta.toFixed(2)} Wh
+            </strong>
+            <small>vs previous interval</small>
+          </div>
+          <div className="insight-card">
+            <span>Avg / Room</span>
+            <strong>{avgEnergyPerRoom.toFixed(2)} Wh</strong>
+            <small>{rooms.length} total rooms</small>
+          </div>
+          <div className="insight-card">
+            <span>Device Availability</span>
+            <strong>{totalDevices ? Math.round((kpi.activeDevices / totalDevices) * 100) : 0}%</strong>
+            <small>{kpi.activeDevices}/{totalDevices} active</small>
+          </div>
+          <div className="insight-card">
+            <span>Critical Alerts</span>
+            <strong>{criticalAlerts}</strong>
+            <small>{alerts.length} total active alerts</small>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FLOOR BLUEPRINT ── */}
+      <section>
+        <h2 className="section-title">Floor Blueprint</h2>
+        <div className="blueprint-grid">
+          {floorRooms.map((room) => (
+            <button
+              key={room._id}
+              className={`blueprint-cell ${alertRoomIds.has(room._id) ? "has-alert" : ""}`}
+              style={{ "--room-intensity": room.intensity }}
+              onClick={() => setSelectedRoom(room)}
+            >
+              <div className="cell-head">
+                <h4>{room.name}</h4>
+                <span>{room.roomEnergy.toFixed(1)} Wh</span>
+              </div>
+              <div className="cell-meta">
+                <span>{room.activeCount}/{room.deviceList.length || 0} active</span>
+                <div className="device-dots">
+                  {(room.deviceList || []).slice(0, 8).map((d) => (
+                    <span
+                      key={d._id}
+                      className={`device-dot ${d.status ? "on" : "off"}`}
+                      title={`${d.type} - ${d.status ? "ON" : "OFF"}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </button>
+          ))}
         </div>
       </section>
 
@@ -248,40 +405,49 @@ function App() {
         )}
       </section>
 
-      {/* ── HEATMAP ── */}
-      <section>
-        <h2 className="section-title">Room Heatmap</h2>
-        <div className="heatmap">
-          {rooms.map((room) => {
-            const energy = getRoomEnergy(room._id);
-            return (
-              <button
-                key={room._id}
-                className={`heat-card ${alertRoomIds.has(room._id) ? "has-alert" : ""}`}
-                style={{ background: getHeatColor(energy) }}
-                onClick={() => setSelectedRoom(room)}
-              >
-                <span>{room.name}</span>
-                <strong>{energy.toFixed(2)} Wh</strong>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── CHARTS ── */}
+      {/* ── ADVANCED ANALYTICS ── */}
       <section className="analytics-grid">
         <div className="card chart-card">
-          <h2>Energy by Room</h2>
-          <Pie data={roomChartData} />
+          <h2>Energy by Top Rooms</h2>
+          <Bar data={roomBarData} />
         </div>
         <div className="card chart-card">
-          <h2>Energy by Device</h2>
-          <Bar data={deviceChartData} />
+          <h2>Device Availability</h2>
+          <Doughnut data={statusDoughnutData} />
         </div>
         <div className="card chart-card wide">
           <h2>Energy Over Time</h2>
           <Line data={timeSeriesChartData} />
+        </div>
+        <div className="card chart-card wide">
+          <h2>Device Type Consumption</h2>
+          <Bar data={deviceChartData} />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="section-title">Top Energy Rooms</h2>
+        <div className="table-wrap">
+          <table className="elite-table">
+            <thead>
+              <tr>
+                <th>Room</th>
+                <th>Energy (Wh)</th>
+                <th>Devices</th>
+                <th>Alert</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topRoomRows.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.name}</td>
+                  <td>{row.energy.toFixed(2)}</td>
+                  <td>{row.devices}</td>
+                  <td>{alertRoomIds.has(row.id) ? "Active" : "Clear"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
