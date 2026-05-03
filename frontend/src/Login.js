@@ -22,6 +22,7 @@ export default function Login({ onLogin }) {
     try {
       const res = await API.post("/auth/login", { username, password });
       localStorage.setItem("token", res.data.token);
+      localStorage.setItem("refreshToken", res.data.refreshToken);
       onLogin();
     } catch (err) {
       setError(err.response?.data?.error || "Invalid credentials.");

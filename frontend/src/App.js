@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import API from "./api";
 import Login from "./Login";
@@ -46,8 +46,11 @@ function App() {
   const [timeSeriesAnalytics,setTimeSeriesAnalytics]= useState([]);
   const [selectedRoom,       setSelectedRoom]       = useState(null);
   const [kpi, setKpi] = useState({ totalEnergy: 0, activeDevices: 0, activeAlerts: 0, topRoom: "" });
+  const fetchInFlight = useRef(false);
 
   const fetchData = useCallback(async () => {
+    if (fetchInFlight.current) return;
+    fetchInFlight.current = true;
     try {
       const [roomsRes, devicesRes, alertsRes, heatmapRes, devAnalRes, tsRes] =
         await Promise.all([
@@ -70,13 +73,15 @@ function App() {
         localStorage.removeItem("token");
         setIsAuthenticated(false);
       }
+    } finally {
+      fetchInFlight.current = false;
     }
   }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
   }, [fetchData, isAuthenticated]);
 

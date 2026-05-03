@@ -1,7 +1,12 @@
 const mqtt = require("mqtt");
 const mongoose = require("mongoose");
 
-const client = mqtt.connect("mqtt://mqtt:1883");
+const client = mqtt.connect(process.env.MQTT_URL || "mqtt://mqtt:1883", {
+  username: process.env.MQTT_USER,
+  password: process.env.MQTT_PASS,
+  reconnectPeriod: 3000,
+  connectTimeout: 10000
+});
 
 const ENERGY_THRESHOLD = 20; // room energy threshold (Wh)
 const DEVICE_TIME_LIMIT = 60 * 1000; // 1 min

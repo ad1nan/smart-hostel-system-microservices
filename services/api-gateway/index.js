@@ -3,22 +3,66 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 const authMiddleware = require("./middleware/authMiddleware");
 const roleMiddleware = require("./middleware/roleMiddleware");
 
 const app = express();
-app.use(cors({ origin: "*" }));
+
+// --- HELMET: sets 14 security headers in one line ---
+app.use(helmet());
+
+// --- CORS: only allow the React frontend, not * ---
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:3000").split(",");
+app.use(cors({
+  origin: (origin, callback) => {
+    // allow requests with no origin (curl, Postman, health checks)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 
-const ROOMS_SERVICE    = process.env.ROOMS_SERVICE_URL;
-const DEVICES_SERVICE  = process.env.DEVICES_SERVICE_URL;
-const ALERTS_SERVICE   = process.env.ALERTS_SERVICE_URL;
-const ANALYTICS_SERVICE = process.env.ANALYTICS_SERVICE_URL;
-const AUTH_SERVICE     = process.env.AUTH_SERVICE_URL;
+// --- RATE LIMITERS ---
 
-/* ---------- AUTH (public) ---------- */
-app.post("/auth/login", async (req, res) => {
+// General limiter (configurable):
+// Defaults are higher for local microservice polling workloads.
+const GENERAL_RATE_WINDOW_MS = Number(process.env.GENERAL_RATE_WINDOW_MS || 15 * 60 * 1000);
+const GENERAL_RATE_MAX = Number(process.env.GENERAL_RATE_MAX || 2000);
+const generalLimiter = rateLimit({
+  windowMs: GENERAL_RATE_WINDOW_MS,
+  max: GENERAL_RATE_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // In local docker setups, all browser traffic appears from one IP.
+  // Skipping localhost avoids accidental lockouts during normal dashboard polling.
+  skip: (req) => req.ip === "::1" || req.ip === "127.0.0.1" || req.ip === "::ffff:127.0.0.1",
+  message: { error: "Too many requests, please try again later." }
+});
+
+// Strict limiter for auth: 10 attempts / 15 min per IP (brute force protection)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts, please try again in 15 minutes." }
+});
+
+app.use(generalLimiter);
+
+const ROOMS_SERVICE     = process.env.ROOMS_SERVICE_URL;
+const DEVICES_SERVICE   = process.env.DEVICES_SERVICE_URL;
+const ALERTS_SERVICE    = process.env.ALERTS_SERVICE_URL;
+const ANALYTICS_SERVICE = process.env.ANALYTICS_SERVICE_URL;
+const AUTH_SERVICE      = process.env.AUTH_SERVICE_URL;
+
+/* ---------- AUTH (public, strict rate limit) ---------- */
+app.post("/auth/login", authLimiter, async (req, res) => {
   try {
     const response = await axios.post(`${AUTH_SERVICE}/auth/login`, req.body);
     res.json(response.data);
@@ -28,13 +72,33 @@ app.post("/auth/login", async (req, res) => {
   }
 });
 
-app.post("/auth/register", async (req, res) => {
+app.post("/auth/register", authLimiter, async (req, res) => {
   try {
     const response = await axios.post(`${AUTH_SERVICE}/auth/register`, req.body);
     res.json(response.data);
   } catch (err) {
     console.error("Register error:", err.response?.data || err.message);
     res.status(err.response?.status || 500).json(err.response?.data || { error: "Auth service error" });
+  }
+});
+
+// Refresh token route — passes through to auth service
+app.post("/auth/refresh", authLimiter, async (req, res) => {
+  try {
+    const response = await axios.post(`${AUTH_SERVICE}/auth/refresh`, req.body);
+    res.json(response.data);
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { error: "Refresh failed" });
+  }
+});
+
+// Logout — invalidates refresh token
+app.post("/auth/logout", authMiddleware, async (req, res) => {
+  try {
+    const response = await axios.post(`${AUTH_SERVICE}/auth/logout`, req.body);
+    res.json(response.data);
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { error: "Logout failed" });
   }
 });
 
