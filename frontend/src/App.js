@@ -53,6 +53,8 @@ function App() {
   const [weeklyReports,      setWeeklyReports]      = useState([]);
   const [ratePerKwh,         setRatePerKwh]         = useState(() => Number(localStorage.getItem("rate_per_kwh") || 8));
   const [selectedRoom,       setSelectedRoom]       = useState(null);
+  const [activeSection,      setActiveSection]      = useState("overview");
+  const [selectedFloor,      setSelectedFloor]      = useState("all");
   const [kpi, setKpi] = useState({ totalEnergy: 0, activeDevices: 0, activeAlerts: 0, topRoom: "" });
   const fetchInFlight = useRef(false);
   const analyticsFetchInFlight = useRef(false);
@@ -257,6 +259,30 @@ function App() {
     });
   }, [rooms, roomDevicesMap, maxEnergy, getRoomEnergy]);
 
+  const floorCards = useMemo(() => {
+    const byFloor = new Map();
+    floorRooms.forEach((room) => {
+      const floorKey = Number(room.floor) || 0;
+      if (!byFloor.has(floorKey)) byFloor.set(floorKey, []);
+      byFloor.get(floorKey).push(room);
+    });
+    return [...byFloor.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([floor, entries]) => {
+        const occupied = entries.reduce((sum, r) => sum + Number(r.occupancy || 0), 0);
+        const capacity = entries.reduce((sum, r) => sum + Number(r.capacity || 0), 0);
+        const consumption = entries.reduce((sum, r) => sum + Number(r.roomEnergy || 0), 0);
+        const twoPpl = entries.filter((r) => r.roomType === "2ppl").length;
+        const fourPpl = entries.filter((r) => r.roomType === "4ppl").length;
+        return { floor, entries, occupied, capacity, consumption, twoPpl, fourPpl };
+      });
+  }, [floorRooms]);
+
+  const visibleRooms = useMemo(() => {
+    if (selectedFloor === "all") return floorRooms;
+    return floorRooms.filter((room) => Number(room.floor) === Number(selectedFloor));
+  }, [floorRooms, selectedFloor]);
+
   const energySeries = useMemo(
     () => timeSeriesAnalytics.map((t) => Number(t.totalUsage ?? t.totalEnergy ?? 0)),
     [timeSeriesAnalytics]
@@ -350,33 +376,65 @@ function App() {
 
   return (
     <div className={`app ${darkMode ? "theme-dark" : "theme-light"} ${compactView ? "compact" : "expanded"}`}>
-
-      {/* ── HEADER ── */}
-      <header className="dash-header">
-        <div className="dash-header-left">
-          <span className="dash-logo">⚡</span>
-          <h1 className="dash-title">Smart Hostel</h1>
-        </div>
-        <div className="dash-header-right">
-          <div className="view-switches">
-            <button className="toggle-pill" onClick={() => setDarkMode((prev) => !prev)}>
-              {darkMode ? "Dark" : "Light"} Mode
-            </button>
-            <button className="toggle-pill" onClick={() => setCompactView((prev) => !prev)}>
-              {compactView ? "Compact" : "Expanded"}
-            </button>
+      <div className="layout-shell">
+        <aside className="side-nav">
+          <div className="brand-block">
+            <span className="dash-logo">⚡</span>
+            <div>
+              <h1 className="dash-title">Smart Hostel</h1>
+              <p className="brand-subtitle">Energy Command Center</p>
+            </div>
           </div>
-          <div className="user-pill">
-            <span className={`role-badge ${isAdmin ? "admin" : "user"}`}>
-              {isAdmin ? "Admin" : "User"}
-            </span>
-            <span className="username-label">{user?.username || "–"}</span>
+          <nav className="nav-menu">
+            {[
+              ["overview", "Overview"],
+              ["flooring", "Floor Planner"],
+              ["operations", "Operations"],
+              ["analytics", "Analytics"],
+              ["reports", "Reports"]
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                className={`nav-link ${activeSection === id ? "active" : ""}`}
+                onClick={() => setActiveSection(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="nav-footer">
+            <div className="user-pill">
+              <span className={`role-badge ${isAdmin ? "admin" : "user"}`}>{isAdmin ? "Admin" : "User"}</span>
+              <span className="username-label">{user?.username || "–"}</span>
+            </div>
+            <button className="toggle-pill" onClick={() => setDarkMode((prev) => !prev)}>{darkMode ? "Dark" : "Light"} Mode</button>
+            <button className="toggle-pill" onClick={() => setCompactView((prev) => !prev)}>{compactView ? "Compact" : "Expanded"}</button>
+            <button className="logout-btn" onClick={logout}>Sign out</button>
           </div>
-          <button className="logout-btn" onClick={logout}>Sign out</button>
-        </div>
-      </header>
+        </aside>
+        <main className="main-panel">
+          {/* ── HEADER ── */}
+          <header className="dash-header">
+            <div className="dash-header-left">
+              <h2 className="section-title">Live Building Operations</h2>
+            </div>
+            <div className="dash-header-right">
+              <div className="rate-control">
+                <label htmlFor="ratePerKwh">Rate (Rs/kWh)</label>
+                <input
+                  id="ratePerKwh"
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  value={ratePerKwh}
+                  onChange={(e) => setRatePerKwh(Number(e.target.value) || 1)}
+                />
+              </div>
+            </div>
+          </header>
 
       {/* ── KPI STRIP ── */}
+      {activeSection === "overview" && (
       <section>
         <h2 className="section-title">Overview</h2>
         <div className="kpi-container">
@@ -400,21 +458,12 @@ function App() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ── EXECUTIVE ANALYTICS ── */}
+      {activeSection === "overview" && (
       <section>
         <h2 className="section-title">Executive Analytics</h2>
-        <div className="rate-control">
-          <label htmlFor="ratePerKwh">Electricity Rate (Rs/kWh)</label>
-          <input
-            id="ratePerKwh"
-            type="number"
-            min="1"
-            step="0.5"
-            value={ratePerKwh}
-            onChange={(e) => setRatePerKwh(Number(e.target.value) || 1)}
-          />
-        </div>
         <div className="insight-grid">
           <div className="insight-card">
             <span>Energy Trend</span>
@@ -441,12 +490,38 @@ function App() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ── FLOOR BLUEPRINT ── */}
+      {activeSection === "flooring" && (
       <section>
         <h2 className="section-title">Floor Blueprint</h2>
+        <div className="floor-filter">
+          <button className={`toggle-pill ${selectedFloor === "all" ? "selected" : ""}`} onClick={() => setSelectedFloor("all")}>
+            All Floors
+          </button>
+          {floorCards.map((f) => (
+            <button
+              key={f.floor}
+              className={`toggle-pill ${Number(selectedFloor) === f.floor ? "selected" : ""}`}
+              onClick={() => setSelectedFloor(f.floor)}
+            >
+              Floor {f.floor}
+            </button>
+          ))}
+        </div>
+        <div className="floor-cards-grid">
+          {floorCards.map((floorCard) => (
+            <div key={floorCard.floor} className="card floor-card">
+              <h3>Floor {floorCard.floor}</h3>
+              <p>{floorCard.entries.length} rooms · {floorCard.occupied}/{floorCard.capacity} occupants</p>
+              <p>2-sharing: {floorCard.twoPpl} · 4-sharing: {floorCard.fourPpl}</p>
+              <strong>{floorCard.consumption.toFixed(1)} Wh total</strong>
+            </div>
+          ))}
+        </div>
         <div className="blueprint-grid">
-          {floorRooms.map((room) => (
+          {visibleRooms.map((room) => (
             <button
               key={room._id}
               className={`blueprint-cell ${alertRoomIds.has(room._id) ? "has-alert" : ""}`}
@@ -459,7 +534,7 @@ function App() {
               </div>
               <div className="cell-meta">
                 <span>
-                  F{room.floor || "-"} | {room.occupancy ?? 0}/{room.capacity ?? 0} occupants
+                  F{room.floor || "-"} · {room.roomType || "-"} · {room.occupancy ?? 0}/{room.capacity ?? 0} occupants
                 </span>
                 <div className="device-dots">
                   {(room.deviceList || []).slice(0, 8).map((d) => (
@@ -475,8 +550,10 @@ function App() {
           ))}
         </div>
       </section>
+      )}
 
       {/* ── ALERTS ── */}
+      {activeSection === "operations" && (
       <section>
         <div className="section-header">
           <h2 className="section-title">Alerts</h2>
@@ -504,8 +581,10 @@ function App() {
           ))
         )}
       </section>
+      )}
 
       {/* ── ADVANCED ANALYTICS ── */}
+      {activeSection === "analytics" && (
       <section className="analytics-grid">
         <div className="card chart-card">
           <h2>Energy by Top Rooms</h2>
@@ -532,7 +611,9 @@ function App() {
           <Bar data={forecastChartData} />
         </div>
       </section>
+      )}
 
+      {activeSection === "analytics" && (
       <section>
         <h2 className="section-title">Energy Cost per Room (24h)</h2>
         <div className="table-wrap">
@@ -561,7 +642,9 @@ function App() {
           </table>
         </div>
       </section>
+      )}
 
+      {activeSection === "analytics" && (
       <section>
         <h2 className="section-title">Top Energy Rooms</h2>
         <div className="table-wrap">
@@ -587,7 +670,9 @@ function App() {
           </table>
         </div>
       </section>
+      )}
 
+      {activeSection === "reports" && (
       <section>
         <div className="section-header">
           <h2 className="section-title">Daily / Weekly Reports</h2>
@@ -617,6 +702,7 @@ function App() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ── ROOM MODAL ── */}
       {selectedRoom && (
@@ -672,6 +758,8 @@ function App() {
         </div>
       )}
 
+        </main>
+      </div>
     </div>
   );
 }
