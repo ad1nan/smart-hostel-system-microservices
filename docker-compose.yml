@@ -78,8 +78,8 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017/hostelDB
       MQTT_URL: mqtt://mqtt:1883
-      MQTT_USER: hostel_device
-      MQTT_PASS: secret123
+      MQTT_USER: hostel_ingest
+      MQTT_PASS: ShsMqtt2026UltraSecure9
     restart: always
 
   alerts:
@@ -111,8 +111,8 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017/hostelDB
       MQTT_URL: mqtt://mqtt:1883
-      MQTT_USER: hostel_device
-      MQTT_PASS: secret123
+      MQTT_USER: hostel_ingest
+      MQTT_PASS: ShsMqtt2026UltraSecure9
     restart: always
 
   auth:

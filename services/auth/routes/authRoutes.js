@@ -17,10 +17,28 @@ function generateAccessToken(user) {
   );
 }
 
+function hashRefreshToken(rawToken) {
+  return crypto.createHash("sha256").update(rawToken).digest("hex");
+}
+
+function requireAdmin(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token) return res.status(401).json({ error: "No token provided" });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.role !== "admin") return res.status(403).json({ error: "Access denied" });
+    req.user = decoded;
+    return next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+}
+
 /* ---------- REGISTER ---------- */
 router.post("/register", async (req, res) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: "Username and password are required" });
@@ -38,7 +56,7 @@ router.post("/register", async (req, res) => {
     const user = new User({
       username,
       password: hashed,
-      role: role === "admin" ? "admin" : "user"
+      role: "user"
     });
     await user.save();
 
@@ -75,8 +93,9 @@ router.post("/login", async (req, res) => {
 
     // Issue refresh token (random 64-byte hex, stored in DB)
     const rawRefresh = crypto.randomBytes(64).toString("hex");
+    const refreshTokenHash = hashRefreshToken(rawRefresh);
     await RefreshToken.create({
-      token: rawRefresh,
+      tokenHash: refreshTokenHash,
       userId: user._id,
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_EXPIRY)
     });
@@ -100,7 +119,7 @@ router.post("/refresh", async (req, res) => {
       return res.status(400).json({ error: "Refresh token required" });
     }
 
-    const stored = await RefreshToken.findOne({ token: refreshToken });
+    const stored = await RefreshToken.findOne({ tokenHash: hashRefreshToken(refreshToken) });
 
     if (!stored || stored.revoked || stored.expiresAt < new Date()) {
       return res.status(401).json({ error: "Invalid or expired refresh token" });
@@ -116,8 +135,9 @@ router.post("/refresh", async (req, res) => {
     await stored.save();
 
     const newRawRefresh = crypto.randomBytes(64).toString("hex");
+    const newRefreshTokenHash = hashRefreshToken(newRawRefresh);
     await RefreshToken.create({
-      token: newRawRefresh,
+      tokenHash: newRefreshTokenHash,
       userId: user._id,
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_EXPIRY)
     });
@@ -140,12 +160,30 @@ router.post("/logout", async (req, res) => {
   try {
     const { refreshToken } = req.body;
     if (refreshToken) {
-      await RefreshToken.updateOne({ token: refreshToken }, { revoked: true });
+      await RefreshToken.updateOne({ tokenHash: hashRefreshToken(refreshToken) }, { revoked: true });
     }
     res.json({ message: "Logged out successfully" });
   } catch (err) {
     console.error("Logout error:", err.message);
     res.status(500).json({ error: "Logout failed" });
+  }
+});
+
+router.patch("/users/:id/role", requireAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!["user", "admin"].includes(role)) {
+      return res.status(400).json({ error: "Role must be either 'user' or 'admin'" });
+    }
+    const updated = await User.findByIdAndUpdate(
+      req.params.id,
+      { role },
+      { new: true, select: "_id username role" }
+    );
+    if (!updated) return res.status(404).json({ error: "User not found" });
+    return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ error: "Role update failed" });
   }
 });
 

@@ -5,7 +5,6 @@ export default function Login({ onLogin }) {
   const [tab, setTab]           = useState("login");   // "login" | "register"
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole]         = useState("user");
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
@@ -43,7 +42,7 @@ export default function Login({ onLogin }) {
     }
     setLoading(true);
     try {
-      await API.post("/auth/register", { username, password, role });
+      await API.post("/auth/register", { username, password });
       setSuccess("Account created! You can now log in.");
       setTab("login");
       setUsername("");
@@ -114,30 +113,6 @@ export default function Login({ onLogin }) {
             />
           </div>
 
-          {/* Role selector — register only */}
-          {tab === "register" && (
-            <div className="auth-field">
-              <label className="auth-label">Role</label>
-              <div className="auth-role-group">
-                {["user", "admin"].map((r) => (
-                  <button
-                    key={r}
-                    className={`auth-role-btn ${role === r ? "selected" : ""}`}
-                    onClick={() => setRole(r)}
-                    type="button"
-                  >
-                    {r === "admin" ? "👑 Admin" : "👤 User"}
-                  </button>
-                ))}
-              </div>
-              {role === "admin" && (
-                <p className="auth-role-hint">
-                  Admin accounts can toggle devices and resolve alerts.
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Error / success */}
           {error   && <div className="auth-error">{error}</div>}
           {success && <div className="auth-success">{success}</div>}
@@ -158,7 +133,7 @@ export default function Login({ onLogin }) {
         <div className="auth-legend">
           <div className="auth-legend-row">
             <span className="auth-badge admin">Admin</span>
-            <span>View dashboard · Toggle devices · Resolve alerts</span>
+            <span>Assigned by existing admins only (no self-registration)</span>
           </div>
           <div className="auth-legend-row">
             <span className="auth-badge user">User</span>

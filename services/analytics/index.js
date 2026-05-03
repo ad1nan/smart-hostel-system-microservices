@@ -7,6 +7,11 @@ const cors = require("cors");
 const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
+const jwtSecret = process.env.JWT_SECRET || "";
+if (jwtSecret.length < 32) {
+  console.error("JWT_SECRET must be set and at least 32 characters long.");
+  process.exit(1);
+}
 const { startReportScheduler } = require("./reportScheduler");
 
 app.use("/analytics", require("./routes/analyticsRoutes"));

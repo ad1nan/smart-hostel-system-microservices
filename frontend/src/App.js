@@ -58,6 +58,7 @@ function App() {
   const [kpi, setKpi] = useState({ totalEnergy: 0, activeDevices: 0, activeAlerts: 0, topRoom: "" });
   const fetchInFlight = useRef(false);
   const analyticsFetchInFlight = useRef(false);
+  const unwrapList = (payload) => (Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []);
 
   const fetchData = useCallback(async () => {
     if (fetchInFlight.current) return;
@@ -72,12 +73,12 @@ function App() {
           API.get("/analytics/devices"),
           API.get("/analytics/timeseries")
         ]);
-      setRooms(roomsRes.data               || []);
-      setDevices(devicesRes.data           || []);
-      setAlerts(alertsRes.data             || []);
-      setRoomAnalytics(heatmapRes.data     || []);
-      setDeviceAnalytics(devAnalRes.data   || []);
-      setTimeSeriesAnalytics(tsRes.data    || []);
+      setRooms(unwrapList(roomsRes.data));
+      setDevices(unwrapList(devicesRes.data));
+      setAlerts(unwrapList(alertsRes.data));
+      setRoomAnalytics(unwrapList(heatmapRes.data));
+      setDeviceAnalytics(unwrapList(devAnalRes.data));
+      setTimeSeriesAnalytics(unwrapList(tsRes.data));
     } catch (err) {
       console.error("Fetch error:", err.response?.data || err.message);
       if (err.response?.status === 401) {

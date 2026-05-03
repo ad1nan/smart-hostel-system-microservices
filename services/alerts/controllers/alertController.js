@@ -2,20 +2,22 @@ const Alert = require("../models/Alert");
 
 exports.getActiveAlerts = async (req, res) => {
   try {
-    const alerts = await Alert.collection
-  .find({
-    $or: [
-      { resolved: false },
-      { resolved: { $exists: false } }
-    ]
-  })
-  .sort({ createdAt: -1 })
-  .toArray();
-    console.log("Alerts fetched:", alerts.length);
-
-    res.json(alerts);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const skip = (page - 1) * limit;
+    const filter = {
+      $or: [
+        { resolved: false },
+        { resolved: { $exists: false } }
+      ]
+    };
+    const [alerts, total] = await Promise.all([
+      Alert.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Alert.countDocuments(filter)
+    ]);
+    res.json({ data: alerts, page, limit, total, totalPages: Math.ceil(total / limit) });
   } catch (err) {
-    console.error("🔥 REAL ERROR:", err); // ← THIS LINE IMPORTANT
+    console.error("Alert fetch error:", err);
     res.status(500).json({ error: "Failed to fetch alerts" });
   }
 };

@@ -13,6 +13,7 @@ logs
 # docker volumes / db
 mongo-data
 mosquitto/data
+services/mqtt/passwd
 
 # OS
 .DS_Store

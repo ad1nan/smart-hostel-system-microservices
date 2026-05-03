@@ -8,6 +8,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const jwtSecret = process.env.JWT_SECRET || "";
+if (jwtSecret.length < 32) {
+  console.error("JWT_SECRET must be set and at least 32 characters long.");
+  process.exit(1);
+}
+
 app.use("/auth", require("./routes/authRoutes"));
 
 app.get("/", (req, res) => res.send("Auth Service running"));

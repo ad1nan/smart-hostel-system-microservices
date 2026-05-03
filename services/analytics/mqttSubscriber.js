@@ -1,7 +1,11 @@
 const mqtt = require("mqtt");
 const mongoose = require("mongoose");
+const mqttUrl = process.env.MQTT_URL || "mqtt://mqtt:1883";
+if (process.env.NODE_ENV === "production" && !mqttUrl.startsWith("mqtts://")) {
+  throw new Error("In production, MQTT_URL must use mqtts://");
+}
 
-const client = mqtt.connect(process.env.MQTT_URL || "mqtt://mqtt:1883", {
+const client = mqtt.connect(mqttUrl, {
   username: process.env.MQTT_USER,
   password: process.env.MQTT_PASS,
   reconnectPeriod: 3000,

@@ -6,12 +6,34 @@ const activeIntervals = {}; // in-memory tracking
 
 exports.getDevices = async (req, res) => {
   try {
-    const devices = await Device.find();
-    res.json(devices);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const skip = (page - 1) * limit;
+    const [devices, total] = await Promise.all([
+      Device.find().skip(skip).limit(limit),
+      Device.countDocuments()
+    ]);
+    res.json({ data: devices, page, limit, total, totalPages: Math.ceil(total / limit) });
   } catch (err) {
     console.error("Device fetch error:", err.message);
     res.status(500).json({ error: "Error fetching devices" });
   }
+};
+
+exports.resumePublishingForActiveDevices = async () => {
+  const activeDevices = await Device.find({ status: true });
+  activeDevices.forEach((device) => {
+    if (activeIntervals[device._id]) return;
+    activeIntervals[device._id] = setInterval(() => {
+      const payload = {
+        deviceId: device._id.toString(),
+        roomId: device.roomId.toString(),
+        power: device.power,
+        timestamp: new Date()
+      };
+      mqttClient.publish("energy/data", JSON.stringify(payload));
+    }, 3000);
+  });
 };
 
 exports.toggleDevice = async (req, res) => {

@@ -17,6 +17,11 @@ app.get("/", (req, res) => res.send("Devices Service running"));
 app.get("/health", (req, res) => res.json({ status: "ok", service: "devices" }));
 
 const PORT = process.env.PORT || 5002;
+const jwtSecret = process.env.JWT_SECRET || "";
+if (jwtSecret.length < 32) {
+  console.error("JWT_SECRET must be set and at least 32 characters long.");
+  process.exit(1);
+}
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,7 +38,11 @@ const connectMongo = async (attempt = 1) => {
 };
 
 connectMongo()
-  .then(() => app.listen(PORT, () => console.log(`Devices Service running on ${PORT}`)))
+  .then(async () => {
+    const controller = require("./controllers/deviceController");
+    await controller.resumePublishingForActiveDevices();
+    app.listen(PORT, () => console.log(`Devices Service running on ${PORT}`));
+  })
   .catch((err) => {
     console.error("Devices Service failed to start:", err);
     process.exit(1);

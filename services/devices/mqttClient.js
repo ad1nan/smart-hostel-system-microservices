@@ -1,6 +1,9 @@
 const mqtt = require("mqtt");
 
 const MQTT_URL = process.env.MQTT_URL || "mqtt://mqtt:1883";
+if (process.env.NODE_ENV === "production" && !MQTT_URL.startsWith("mqtts://")) {
+  throw new Error("In production, MQTT_URL must use mqtts://");
+}
 
 const client = mqtt.connect(process.env.MQTT_URL || "mqtt://mqtt:1883", {
   username: process.env.MQTT_USER,

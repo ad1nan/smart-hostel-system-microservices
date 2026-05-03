@@ -11,6 +11,12 @@ const roleMiddleware = require("./middleware/roleMiddleware");
 
 const app = express();
 
+const jwtSecret = process.env.JWT_SECRET || "";
+if (jwtSecret.length < 32) {
+  console.error("JWT_SECRET must be set and at least 32 characters long.");
+  process.exit(1);
+}
+
 // --- HELMET: sets 14 security headers in one line ---
 app.use(helmet());
 
@@ -33,6 +39,7 @@ app.use(express.json());
 // Defaults are higher for local microservice polling workloads.
 const GENERAL_RATE_WINDOW_MS = Number(process.env.GENERAL_RATE_WINDOW_MS || 15 * 60 * 1000);
 const GENERAL_RATE_MAX = Number(process.env.GENERAL_RATE_MAX || 2000);
+const isProduction = process.env.NODE_ENV === "production";
 const generalLimiter = rateLimit({
   windowMs: GENERAL_RATE_WINDOW_MS,
   max: GENERAL_RATE_MAX,
@@ -40,7 +47,7 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
   // In local docker setups, all browser traffic appears from one IP.
   // Skipping localhost avoids accidental lockouts during normal dashboard polling.
-  skip: (req) => req.ip === "::1" || req.ip === "127.0.0.1" || req.ip === "::ffff:127.0.0.1",
+  skip: (req) => !isProduction && (req.ip === "::1" || req.ip === "127.0.0.1" || req.ip === "::ffff:127.0.0.1"),
   message: { error: "Too many requests, please try again later." }
 });
 
@@ -82,6 +89,19 @@ app.post("/auth/register", authLimiter, async (req, res) => {
   }
 });
 
+app.patch("/auth/users/:id/role", authMiddleware, roleMiddleware(["admin"]), async (req, res) => {
+  try {
+    const response = await axios.patch(
+      `${AUTH_SERVICE}/auth/users/${req.params.id}/role`,
+      req.body,
+      { headers: { Authorization: req.headers.authorization } }
+    );
+    res.json(response.data);
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { error: "Role update failed" });
+  }
+});
+
 // Refresh token route — passes through to auth service
 app.post("/auth/refresh", authLimiter, async (req, res) => {
   try {
@@ -105,7 +125,7 @@ app.post("/auth/logout", authMiddleware, async (req, res) => {
 /* ---------- ROOMS ---------- */
 app.get("/rooms", authMiddleware, async (req, res) => {
   try {
-    const response = await axios.get(`${ROOMS_SERVICE}/rooms`);
+    const response = await axios.get(`${ROOMS_SERVICE}/rooms`, { params: req.query });
     res.json(response.data);
   } catch (err) {
     console.error("Rooms error:", err.message);
@@ -116,7 +136,7 @@ app.get("/rooms", authMiddleware, async (req, res) => {
 /* ---------- DEVICES ---------- */
 app.get("/devices", authMiddleware, async (req, res) => {
   try {
-    const response = await axios.get(`${DEVICES_SERVICE}/devices`);
+    const response = await axios.get(`${DEVICES_SERVICE}/devices`, { params: req.query });
     res.json(response.data);
   } catch (err) {
     console.error("Devices error:", err.message);
@@ -137,7 +157,7 @@ app.post("/devices/toggle/:id", authMiddleware, roleMiddleware(["admin"]), async
 /* ---------- ALERTS ---------- */
 app.get("/alerts", authMiddleware, async (req, res) => {
   try {
-    const response = await axios.get(`${ALERTS_SERVICE}/alerts`);
+    const response = await axios.get(`${ALERTS_SERVICE}/alerts`, { params: req.query });
     res.json(response.data);
   } catch (err) {
     console.error("Alerts error:", err.message);
@@ -251,6 +271,26 @@ app.get("/analytics/reports/:granularity/export", authMiddleware, async (req, re
 
 /* ---------- HEALTH ---------- */
 app.get("/health", (req, res) => res.json({ status: "ok", service: "api-gateway" }));
+app.get("/health/dependencies", async (req, res) => {
+  const checks = [
+    ["auth", `${AUTH_SERVICE}/health`],
+    ["rooms", `${ROOMS_SERVICE}/health`],
+    ["devices", `${DEVICES_SERVICE}/health`],
+    ["alerts", `${ALERTS_SERVICE}/health`],
+    ["analytics", `${ANALYTICS_SERVICE}/health`]
+  ];
+  const results = await Promise.allSettled(checks.map(([, url]) => axios.get(url, { timeout: 3000 })));
+  const dependencies = checks.map(([name], idx) => ({
+    service: name,
+    status: results[idx].status === "fulfilled" ? "ok" : "down"
+  }));
+  const hasFailure = dependencies.some((dep) => dep.status !== "ok");
+  res.status(hasFailure ? 503 : 200).json({
+    status: hasFailure ? "degraded" : "ok",
+    service: "api-gateway",
+    dependencies
+  });
+});
 app.get("/", (req, res) => res.send("API Gateway running"));
 
 const PORT = process.env.PORT || 4000;
