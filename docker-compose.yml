@@ -51,6 +51,8 @@ services:
       - mongo
     env_file:
       - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
     restart: always
 
   devices:
@@ -63,6 +65,9 @@ services:
       - mqtt
     env_file:
       - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+      MQTT_URL: mqtt://mqtt:1883
     restart: always
 
   alerts:
@@ -74,6 +79,8 @@ services:
       - mongo
     env_file:
       - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
     restart: always
 
   analytics:
@@ -83,8 +90,12 @@ services:
       - "5004:5004"
     depends_on:
       - mongo
+      - mqtt
     env_file:
       - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+      MQTT_URL: mqtt://mqtt:1883
     restart: always
 
   auth:
@@ -96,6 +107,8 @@ services:
       - mongo
     env_file:
       - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
     restart: always
 
   mqtt:
@@ -106,6 +119,17 @@ services:
     volumes:
       - ./services/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
     restart: always
+
+  # Run once to seed the database:  docker compose run --rm seed
+  seed:
+    build: ./services/seed
+    container_name: seed
+    depends_on:
+      - mongo
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+    profiles:
+      - seed
 
 volumes:
   mongo_data:

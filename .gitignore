@@ -1,6 +1,7 @@
 node_modules
 .env
 .env.*
+!.env.example
 dist
 build
 coverage
@@ -15,4 +16,4 @@ mosquitto/data
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbbs.db

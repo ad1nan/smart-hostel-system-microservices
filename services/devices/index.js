@@ -1,5 +1,3 @@
-global.crypto = require('crypto');
-
 require("dotenv").config();
 
 const express = require("express");
@@ -10,7 +8,8 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-const Device = require("./models/Device");
+// Device model must be imported so Mongoose registers it before routes use it
+require("./models/Device");
 
 app.use("/devices", require("./routes/deviceRoutes"));
 
@@ -34,45 +33,12 @@ const connectMongo = async (attempt = 1) => {
 };
 
 connectMongo()
-  .then(() => {
-    app.listen(PORT, () => console.log(`Devices Service running on ${PORT}`));
-    startMqtt();
-  })
+  .then(() => app.listen(PORT, () => console.log(`Devices Service running on ${PORT}`)))
   .catch((err) => {
     console.error("Devices Service failed to start:", err);
     process.exit(1);
   });
 
-// ================= MQTT =================
-
-function startMqtt() {
-  const mqtt = require("mqtt");
-  const mqttClient = mqtt.connect("mqtt://mqtt:1883");
-
-  mqttClient.on("connect", () => {
-    console.log("Devices service connected to MQTT");
-    mqttClient.subscribe("hostel/devices");
-  });
-
-  mqttClient.on("message", async (topic, message) => {
-    try {
-      const data = JSON.parse(message.toString());
-      console.log("Received MQTT:", data);
-
-      const device = await Device.findOne({ deviceId: data.deviceId });
-
-      if (!device) {
-        console.log("Device not found in DB for:", data.deviceId);
-        return;
-      }
-
-      device.power = data.power;
-      device.status = data.status;
-      await device.save();
-
-      console.log(`Device ${data.deviceId} updated`);
-    } catch (err) {
-      console.error("MQTT error:", err.message);
-    }
-  });
-}
+// NOTE: MQTT publishing is handled by deviceController.js via mqttClient.js
+// when a device is toggled ON. There is no subscriber here — the analytics
+// service handles the energy/data topic independently.

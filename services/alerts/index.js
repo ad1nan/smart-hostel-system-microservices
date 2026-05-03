@@ -1,4 +1,3 @@
-global.crypto = require('crypto');
 require("dotenv").config();
 
 const express = require("express");

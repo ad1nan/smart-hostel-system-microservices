@@ -1,4 +1,3 @@
-global.crypto = require('crypto');
 require("dotenv").config();
 
 const express = require("express");
@@ -32,14 +31,8 @@ const connectMongo = async (attempt = 1) => {
 
 connectMongo()
   .then(() => {
-    console.log("Analytics Service DB Connected");
-
-    // ✅ START MQTT AFTER DB CONNECTS
     require("./mqttSubscriber");
-
-    app.listen(PORT, () =>
-      console.log(`Analytics Service running on ${PORT}`)
-    );
+    app.listen(PORT, () => console.log(`Analytics Service running on ${PORT}`));
   })
   .catch((err) => {
     console.error("Analytics Service failed to start:", err);

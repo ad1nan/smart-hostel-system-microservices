@@ -1,4 +1,3 @@
-global.crypto = require('crypto');
 require("dotenv").config();
 
 const express = require("express");
@@ -12,13 +11,13 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-const ROOMS_SERVICE = process.env.ROOMS_SERVICE_URL;
-const DEVICES_SERVICE = process.env.DEVICES_SERVICE_URL;
-const ALERTS_SERVICE = process.env.ALERTS_SERVICE_URL;
+const ROOMS_SERVICE    = process.env.ROOMS_SERVICE_URL;
+const DEVICES_SERVICE  = process.env.DEVICES_SERVICE_URL;
+const ALERTS_SERVICE   = process.env.ALERTS_SERVICE_URL;
 const ANALYTICS_SERVICE = process.env.ANALYTICS_SERVICE_URL;
-const AUTH_SERVICE = process.env.AUTH_SERVICE_URL;
+const AUTH_SERVICE     = process.env.AUTH_SERVICE_URL;
 
-/* ---------- AUTH (public — no authMiddleware) ---------- */
+/* ---------- AUTH (public) ---------- */
 app.post("/auth/login", async (req, res) => {
   try {
     const response = await axios.post(`${AUTH_SERVICE}/auth/login`, req.body);
@@ -39,7 +38,7 @@ app.post("/auth/register", async (req, res) => {
   }
 });
 
-/* ---------- ROOMS (USER + ADMIN) ---------- */
+/* ---------- ROOMS ---------- */
 app.get("/rooms", authMiddleware, async (req, res) => {
   try {
     const response = await axios.get(`${ROOMS_SERVICE}/rooms`);
@@ -51,8 +50,6 @@ app.get("/rooms", authMiddleware, async (req, res) => {
 });
 
 /* ---------- DEVICES ---------- */
-
-/* USER + ADMIN can view */
 app.get("/devices", authMiddleware, async (req, res) => {
   try {
     const response = await axios.get(`${DEVICES_SERVICE}/devices`);
@@ -63,27 +60,17 @@ app.get("/devices", authMiddleware, async (req, res) => {
   }
 });
 
-/* 🔥 ADMIN ONLY can toggle */
-app.post(
-  "/devices/toggle/:id",
-  authMiddleware,
-  roleMiddleware(["admin"]),
-  async (req, res) => {
-    try {
-      const response = await axios.post(
-        `${DEVICES_SERVICE}/devices/toggle/${req.params.id}`
-      );
-      res.json(response.data);
-    } catch (err) {
-      console.error("Toggle error:", err.response?.data || err.message);
-      res.status(500).json({ error: "Toggle failed" });
-    }
+app.post("/devices/toggle/:id", authMiddleware, roleMiddleware(["admin"]), async (req, res) => {
+  try {
+    const response = await axios.post(`${DEVICES_SERVICE}/devices/toggle/${req.params.id}`);
+    res.json(response.data);
+  } catch (err) {
+    console.error("Toggle error:", err.response?.data || err.message);
+    res.status(500).json({ error: "Toggle failed" });
   }
-);
+});
 
 /* ---------- ALERTS ---------- */
-
-/* USER + ADMIN can view */
 app.get("/alerts", authMiddleware, async (req, res) => {
   try {
     const response = await axios.get(`${ALERTS_SERVICE}/alerts`);
@@ -94,26 +81,17 @@ app.get("/alerts", authMiddleware, async (req, res) => {
   }
 });
 
-/* 🔥 ADMIN ONLY can resolve */
-app.patch(
-  "/alerts/:id/resolve",
-  authMiddleware,
-  roleMiddleware(["admin"]),
-  async (req, res) => {
-    try {
-      const response = await axios.patch(
-        `${ALERTS_SERVICE}/alerts/${req.params.id}/resolve`
-      );
-      res.json(response.data);
-    } catch (err) {
-      console.error("Resolve error:", err.message);
-      res.status(500).json({ error: "Alert resolve error" });
-    }
+app.patch("/alerts/:id/resolve", authMiddleware, roleMiddleware(["admin"]), async (req, res) => {
+  try {
+    const response = await axios.patch(`${ALERTS_SERVICE}/alerts/${req.params.id}/resolve`);
+    res.json(response.data);
+  } catch (err) {
+    console.error("Resolve error:", err.message);
+    res.status(500).json({ error: "Alert resolve error" });
   }
-);
+});
 
-/* ---------- ANALYTICS (USER + ADMIN) ---------- */
-
+/* ---------- ANALYTICS ---------- */
 app.get("/analytics/heatmap", authMiddleware, async (req, res) => {
   try {
     const response = await axios.get(`${ANALYTICS_SERVICE}/analytics/heatmap`);
@@ -146,14 +124,7 @@ app.get("/analytics/timeseries", authMiddleware, async (req, res) => {
 
 /* ---------- HEALTH ---------- */
 app.get("/health", (req, res) => res.json({ status: "ok", service: "api-gateway" }));
+app.get("/", (req, res) => res.send("API Gateway running"));
 
-app.get("/", (req, res) => {
-  res.send("API Gateway running");
-});
-
-/* ---------- START ---------- */
 const PORT = process.env.PORT || 4000;
-
-app.listen(PORT, () => {
-  console.log(`API Gateway running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`API Gateway running on port ${PORT}`));

@@ -5,21 +5,24 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 /* ---------- REGISTER ---------- */
+/* ---------- REGISTER ---------- */
 router.post("/register", async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, role } = req.body;
 
     const hashed = await bcrypt.hash(password, 10);
 
     const user = new User({
       username,
-      password: hashed
+      password: hashed,
+      role: role === "admin" ? "admin" : "user" // ✅ FIX
     });
 
     await user.save();
 
     res.json({ message: "User registered" });
   } catch (err) {
+    console.error("Register error:", err); // optional but useful
     res.status(500).json({ error: "Register failed" });
   }
 });
