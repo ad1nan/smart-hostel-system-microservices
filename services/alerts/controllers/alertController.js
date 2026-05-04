@@ -36,7 +36,7 @@ exports.resolveAlert = async (req, res) => {
       return res.status(400).json({ error: "Invalid alert ID" });
     }
     
-    // Get the alert first to check device status
+    // Get alert first
     const alert = await Alert.findById(alertId);
     if (!alert) {
       return res.status(404).json({ error: "Alert not found" });
@@ -47,54 +47,23 @@ exports.resolveAlert = async (req, res) => {
       return res.status(400).json({ error: "Alert is already resolved" });
     }
 
-    // Get device to check its current status
-    const Device = require("../../../devices/models/Device");
-    const device = await Device.findById(alert.deviceId);
-    
-    // Only allow resolution if device exists and is currently ON
-    // This prevents resolving alerts for devices that are already OFF
-    if (!device) {
-      return res.status(404).json({ error: "Associated device not found" });
-    }
-
-    if (!device.status) {
-      return res.status(400).json({ 
-        error: "Cannot resolve alert for device that is currently OFF",
-        details: "Please turn on the device first before resolving the alert"
-      });
-    }
-
-    // Resolve the alert
+    // Resolve alert
     const resolvedAlert = await Alert.findByIdAndUpdate(
       alertId,
       { resolved: true, resolvedAt: new Date() },
       { new: true }
     );
 
-    // Update device state to ensure consistency
-    try {
-      await Device.findByIdAndUpdate(
-        alert.deviceId,
-        { 
-          status: false, // Turn off device when alert is resolved
-          lastAlertResolution: new Date()
-        }
-      );
-      
-      // Emit socket event for real-time updates
-      const io = req.app.get("io");
-      if (io) {
-        io.emit("alert_resolved", {
-          alertId: alertId,
-          deviceId: alert.deviceId,
-          resolved: true,
-          timestamp: new Date()
-        });
-        io.emit("device_update"); // Refresh device states in frontend
-      }
-    } catch (deviceErr) {
-      console.error("Device update error during alert resolution:", deviceErr.message);
-      // Don't fail the alert resolution if device update fails
+    // Emit socket event for real-time updates
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("alert_resolved", {
+        alertId: alertId,
+        deviceId: alert.deviceId,
+        resolved: true,
+        timestamp: new Date()
+      });
+      io.emit("device_update"); // Refresh device states in frontend
     }
 
     res.json(resolvedAlert);
