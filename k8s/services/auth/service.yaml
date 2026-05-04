@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+  namespace: smart-hostel
+  labels:
+    app: auth
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5005
+    targetPort: 5005
+    name: auth
+  selector:
+    app: auth

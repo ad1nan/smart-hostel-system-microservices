@@ -92,15 +92,13 @@ client.on("message", async (topic, message) => {
     });
 
     // 🔴 CREATE ROOM ALERT
+    // K8s safety: upsert with filter to prevent duplicate alerts from multiple replicas
     if (total > ENERGY_THRESHOLD && !existingRoomAlert) {
-      await db.collection("alerts").insertOne({
-        type: "ROOM_HIGH",
-        message: `${roomName} high energy usage (${total.toFixed(2)} Wh)`,
-        roomId,
-        level: "high",
-        resolved: false,
-        createdAt: new Date()
-      });
+      await db.collection("alerts").updateOne(
+        { type: "ROOM_HIGH", roomId, resolved: false },
+        { $setOnInsert: { type: "ROOM_HIGH", message: `${roomName} high energy usage (${total.toFixed(2)} Wh)`, roomId, level: "high", resolved: false, createdAt: new Date() } },
+        { upsert: true }
+      );
     }
 
     // 🟢 AUTO RESOLVE ROOM ALERT
@@ -135,15 +133,12 @@ client.on("message", async (topic, message) => {
         Date.now() - new Date(device.startTime).getTime();
 
       if (duration > DEVICE_TIME_LIMIT && !existingDeviceAlert) {
-        await db.collection("alerts").insertOne({
-          type: "DEVICE_LONG",
-          message: `${deviceName} in ${roomName} running too long`,
-          deviceId,
-          roomId,
-          level: "high",
-          resolved: false,
-          createdAt: new Date()
-        });
+        // K8s safety: upsert with filter to prevent duplicate alerts from multiple replicas
+        await db.collection("alerts").updateOne(
+          { type: "DEVICE_LONG", deviceId, resolved: false },
+          { $setOnInsert: { type: "DEVICE_LONG", message: `${deviceName} in ${roomName} running too long`, deviceId, roomId, level: "high", resolved: false, createdAt: new Date() } },
+          { upsert: true }
+        );
       }
     }
 
@@ -159,15 +154,12 @@ client.on("message", async (topic, message) => {
       });
 
       if (!existingPowerAlert) {
-        await db.collection("alerts").insertOne({
-          type: "DEVICE_POWER",
-          message: `${deviceName} in ${roomName} consuming high power`,
-          deviceId,
-          roomId,
-          level: "high",
-          resolved: false,
-          createdAt: new Date()
-        });
+        // K8s safety: upsert with filter to prevent duplicate alerts from multiple replicas
+        await db.collection("alerts").updateOne(
+          { type: "DEVICE_POWER", deviceId, resolved: false },
+          { $setOnInsert: { type: "DEVICE_POWER", message: `${deviceName} in ${roomName} consuming high power`, deviceId, roomId, level: "high", resolved: false, createdAt: new Date() } },
+          { upsert: true }
+        );
       }
     }
 

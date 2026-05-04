@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mqtt
+  namespace: smart-hostel
+  labels:
+    app: mqtt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mqtt
+  template:
+    metadata:
+      labels:
+        app: mqtt
+    spec:
+      securityContext:
+        runAsUser: 0
+      initContainers:
+      - name: fix-passwd
+        image: busybox:1.35
+        command: ['sh', '-c', 'chown 1883:1883 /mosquitto/config/passwd && chmod 0700 /mosquitto/config/passwd']
+        volumeMounts:
+        - name: mosquitto-passwd
+          mountPath: /mosquitto/config/passwd
+          subPath: passwd
+      containers:
+      - name: mosquitto
+        image: eclipse-mosquitto:2
+        ports:
+        - containerPort: 1883
+          name: mqtt
+        volumeMounts:
+        - name: mosquitto-config
+          mountPath: /mosquitto/config/mosquitto.conf
+          subPath: mosquitto.conf
+        - name: mosquitto-passwd
+          mountPath: /mosquitto/config/passwd
+          subPath: passwd
+        - name: mqtt-data
+          mountPath: /mosquitto/data
+        livenessProbe:
+          exec:
+            command:
+            - pidof
+            - mosquitto
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 1883
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: mosquitto-config
+        configMap:
+          name: mosquitto-config
+      - name: mosquitto-passwd
+        secret:
+          secretName: mosquitto-passwd
+          defaultMode: 0600
+      - name: mqtt-data
+        persistentVolumeClaim:
+          claimName: mqtt-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mqtt-data
+  namespace: smart-hostel
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

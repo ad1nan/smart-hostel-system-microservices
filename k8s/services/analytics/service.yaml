@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics
+  namespace: smart-hostel
+  labels:
+    app: analytics
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5004
+    targetPort: 5004
+    name: analytics
+  selector:
+    app: analytics

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: devices
+  namespace: smart-hostel
+  labels:
+    app: devices
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5002
+    targetPort: 5002
+    name: devices
+  selector:
+    app: devices

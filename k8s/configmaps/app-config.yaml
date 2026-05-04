@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hostel-config
+  namespace: smart-hostel
+data:
+  AUTH_SERVICE_URL: "http://auth:5005"
+  ROOMS_SERVICE_URL: "http://rooms:5001"
+  DEVICES_SERVICE_URL: "http://devices:5002"
+  ALERTS_SERVICE_URL: "http://alerts:5003"
+  ANALYTICS_SERVICE_URL: "http://analytics:5004"
+  MQTT_URL: "mqtt://mqtt:1883"
+  NODE_ENV: "production"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  # Service ports
+  AUTH_PORT: "5005"
+  ROOMS_PORT: "5001"
+  DEVICES_PORT: "5002"
+  ALERTS_PORT: "5003"
+  ANALYTICS_PORT: "5004"
+  API_GATEWAY_PORT: "4000"

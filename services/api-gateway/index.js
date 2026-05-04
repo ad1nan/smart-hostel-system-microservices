@@ -9,6 +9,33 @@ const rateLimit = require("express-rate-limit");
 const authMiddleware = require("./middleware/authMiddleware");
 const roleMiddleware = require("./middleware/roleMiddleware");
 
+// Redis setup for rate limiting with fallback
+let redisStore = null;
+let redisClient = null;
+
+try {
+  const RedisStore = require("rate-limit-redis");
+  const Redis = require("ioredis");
+  
+  redisClient = new Redis({
+    host: process.env.REDIS_HOST || 'redis',
+    port: Number(process.env.REDIS_PORT) || 6379,
+    lazyConnect: true,
+  });
+  
+  redisClient.on('error', (err) => {
+    console.warn('Redis error (rate limiter degraded):', err.message);
+  });
+  
+  redisStore = new RedisStore({ 
+    sendCommand: (...args) => redisClient.call(...args) 
+  });
+  
+  console.log('Redis rate limiter initialized');
+} catch (err) {
+  console.warn('Redis not available, falling back to memory store:', err.message);
+}
+
 const app = express();
 
 const jwtSecret = process.env.JWT_SECRET || "";
@@ -45,6 +72,7 @@ const generalLimiter = rateLimit({
   max: GENERAL_RATE_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  store: redisStore,
   // In local docker setups, all browser traffic appears from one IP.
   // Skipping localhost avoids accidental lockouts during normal dashboard polling.
   skip: (req) => !isProduction && (req.ip === "::1" || req.ip === "127.0.0.1" || req.ip === "::ffff:127.0.0.1"),
@@ -57,6 +85,7 @@ const authLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  store: redisStore,
   message: { error: "Too many login attempts, please try again in 15 minutes." }
 });
 
