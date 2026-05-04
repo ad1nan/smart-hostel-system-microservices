@@ -40,11 +40,27 @@ router.post("/register", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    if (!username || !password) {
-      return res.status(400).json({ error: "Username and password are required" });
+    // Input validation
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ error: "Username is required and must be a string" });
+    }
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ error: "Password is required and must be a string" });
+    }
+    if (username.trim().length < 3) {
+      return res.status(400).json({ error: "Username must be at least 3 characters long" });
+    }
+    if (username.length > 30) {
+      return res.status(400).json({ error: "Username must be less than 30 characters" });
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return res.status(400).json({ error: "Username can only contain letters, numbers, and underscores" });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ error: "Password must be less than 128 characters" });
     }
 
     const existing = await User.findOne({ username });
@@ -72,8 +88,18 @@ router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    if (!username || !password) {
-      return res.status(400).json({ error: "Username and password are required" });
+    // Input validation
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ error: "Username is required and must be a string" });
+    }
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ error: "Password is required and must be a string" });
+    }
+    if (username.trim().length === 0) {
+      return res.status(400).json({ error: "Username cannot be empty" });
+    }
+    if (password.length === 0) {
+      return res.status(400).json({ error: "Password cannot be empty" });
     }
 
     const user = await User.findOne({ username });
@@ -115,8 +141,11 @@ router.post("/login", async (req, res) => {
 router.post("/refresh", async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) {
-      return res.status(400).json({ error: "Refresh token required" });
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      return res.status(400).json({ error: "Refresh token is required and must be a string" });
+    }
+    if (refreshToken.length === 0) {
+      return res.status(400).json({ error: "Refresh token cannot be empty" });
     }
 
     const stored = await RefreshToken.findOne({ tokenHash: hashRefreshToken(refreshToken) });
@@ -160,6 +189,9 @@ router.post("/logout", async (req, res) => {
   try {
     const { refreshToken } = req.body;
     if (refreshToken) {
+      if (typeof refreshToken !== 'string') {
+        return res.status(400).json({ error: "Refresh token must be a string" });
+      }
       await RefreshToken.updateOne({ tokenHash: hashRefreshToken(refreshToken) }, { revoked: true });
     }
     res.json({ message: "Logged out successfully" });
@@ -172,6 +204,15 @@ router.post("/logout", async (req, res) => {
 router.patch("/users/:id/role", requireAdmin, async (req, res) => {
   try {
     const { role } = req.body;
+    const userId = req.params.id;
+    
+    // Input validation
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: "Invalid user ID" });
+    }
+    if (!role || typeof role !== 'string') {
+      return res.status(400).json({ error: "Role is required and must be a string" });
+    }
     if (!["user", "admin"].includes(role)) {
       return res.status(400).json({ error: "Role must be either 'user' or 'admin'" });
     }

@@ -20,12 +20,13 @@ async function seed() {
 
   await db.collection("energy_reports").deleteMany({});
 
-  const floors = [1, 2, 3];
+  const floors = [1, 2]; // Only floors 1 and 2
   const rooms = [];
   const roomTypes = ["2ppl", "4ppl"];
 
   floors.forEach((floor) => {
-    for (let i = 1; i <= 8; i += 1) {
+    // Create only 5 rooms per floor
+    for (let i = 1; i <= 5; i += 1) {
       const roomNum = floor * 100 + i;
       const roomType = i % 3 === 0 ? roomTypes[1] : roomTypes[0];
       const capacity = roomType === "4ppl" ? 4 : 2;
@@ -56,7 +57,8 @@ async function seed() {
     ];
 
     roomDeviceBlueprint.forEach((bp, bpIdx) => {
-      const enabled = bp.type !== "Heater" && (index + bpIdx) % 2 === 0;
+      // Enable all devices except heaters (which are seasonal), with some variety
+      const enabled = bp.type !== "Heater" ? Math.random() > 0.3 : Math.random() > 0.8;
       allDevices.push({
         deviceId: `D${String(deviceCounter).padStart(3, "0")}`,
         type: bp.type,

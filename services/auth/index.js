@@ -25,12 +25,17 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const connectMongo = async (attempt = 1) => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    const waitTime = Math.min(30000, 1000 * Math.pow(2, attempt)); // Exponential backoff with 30s max
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000
+    });
     console.log("Auth Service DB Connected");
   } catch (err) {
     console.error(`Auth DB connect failed (attempt ${attempt}):`, err.message);
     if (attempt >= 10) throw err;
-    await delay(3000);
+    console.log(`Retrying in ${waitTime}ms...`);
+    await delay(waitTime);
     return connectMongo(attempt + 1);
   }
 };

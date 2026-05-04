@@ -2,7 +2,8 @@ const Device = require("../models/Device");
 const mongoose = require("mongoose");
 const mqttClient = require("../mqttClient");
 
-const activeIntervals = {}; // in-memory tracking
+const activeIntervals = new Map(); // better memory management
+const deviceLocks = new Map(); // prevent race conditions
 
 exports.getDevices = async (req, res) => {
   try {
@@ -16,91 +17,122 @@ exports.getDevices = async (req, res) => {
     res.json({ data: devices, page, limit, total, totalPages: Math.ceil(total / limit) });
   } catch (err) {
     console.error("Device fetch error:", err.message);
-    res.status(500).json({ error: "Error fetching devices" });
+    res.status(500).json({ error: "Error fetching devices", details: err.message });
   }
 };
 
 exports.resumePublishingForActiveDevices = async () => {
-  const activeDevices = await Device.find({ status: true });
-  activeDevices.forEach((device) => {
-    if (activeIntervals[device._id]) return;
-    activeIntervals[device._id] = setInterval(() => {
-      const payload = {
-        deviceId: device._id.toString(),
-        roomId: device.roomId.toString(),
-        power: device.power,
-        timestamp: new Date()
-      };
-      mqttClient.publish("energy/data", JSON.stringify(payload));
-    }, 3000);
-  });
+  try {
+    const activeDevices = await Device.find({ status: true });
+    activeDevices.forEach((device) => {
+      const deviceId = device._id.toString();
+      if (activeIntervals.has(deviceId)) return;
+      
+      const intervalId = setInterval(() => {
+        const payload = {
+          deviceId: deviceId,
+          roomId: device.roomId?.toString() || "unknown",
+          power: device.power || 0,
+          timestamp: new Date()
+        };
+        
+        try {
+          mqttClient.publish("energy/data", JSON.stringify(payload));
+        } catch (mqttErr) {
+          console.error(`MQTT publish error for device ${deviceId}:`, mqttErr.message);
+        }
+      }, 3000);
+      
+      activeIntervals.set(deviceId, intervalId);
+    });
+  } catch (err) {
+    console.error("Resume publishing error:", err.message);
+  }
 };
 
 exports.toggleDevice = async (req, res) => {
   try {
-    const device = await Device.findById(req.params.id);
-    const io = req.app.get("io");
-    const db = mongoose.connection;
-
-    if (!device) {
-      return res.status(404).json({ msg: "Device not found" });
+    // Input validation
+    if (!req.params.id || !mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid device ID" });
     }
 
-    // 🔁 TOGGLE
-    device.status = !device.status;
-
-    // ✅ FIX: TRACK START TIME
-    if (device.status) {
-      device.startTime = new Date();
-    } else {
-      device.startTime = null;
+    const deviceId = req.params.id;
+    
+    // Prevent race conditions
+    if (deviceLocks.has(deviceId)) {
+      return res.status(429).json({ error: "Device operation in progress" });
     }
+    
+    deviceLocks.set(deviceId, true);
+    
+    try {
+      const device = await Device.findById(deviceId);
+      const io = req.app.get("io");
+      const Alert = require("../../alerts/models/Alert");
 
-    await device.save();
-
-    // 🟢 IF TURNED ON → START MQTT
-    if (device.status) {
-      if (!activeIntervals[device._id]) {
-        activeIntervals[device._id] = setInterval(() => {
-          const payload = {
-            deviceId: device._id.toString(), // ensure string
-            roomId: device.roomId.toString(),
-            power: device.power,
-            timestamp: new Date()
-          };
-
-          mqttClient.publish("energy/data", JSON.stringify(payload));
-        }, 3000);
-      }
-    }
-
-    // 🔴 IF TURNED OFF → STOP MQTT + RESOLVE ALERTS
-    else {
-      if (activeIntervals[device._id]) {
-        clearInterval(activeIntervals[device._id]);
-        delete activeIntervals[device._id];
+      if (!device) {
+        return res.status(404).json({ error: "Device not found" });
       }
 
-      // ✅ resolve ALL device alerts
-      await db.collection("alerts").updateMany(
-        {
-          deviceId: device._id,
-          resolved: false
-        },
-        {
-          $set: { resolved: true }
+      // Toggle device status
+      device.status = !device.status;
+      device.startTime = device.status ? new Date() : null;
+      await device.save();
+
+      const deviceIdStr = device._id.toString();
+
+      // Start MQTT publishing if device turned on
+      if (device.status) {
+        if (!activeIntervals.has(deviceIdStr)) {
+          const intervalId = setInterval(() => {
+            const payload = {
+              deviceId: deviceIdStr,
+              roomId: device.roomId?.toString() || "unknown",
+              power: device.power || 0,
+              timestamp: new Date()
+            };
+            
+            try {
+              mqttClient.publish("energy/data", JSON.stringify(payload));
+            } catch (mqttErr) {
+              console.error(`MQTT publish error for device ${deviceIdStr}:`, mqttErr.message);
+            }
+          }, 3000);
+          
+          activeIntervals.set(deviceIdStr, intervalId);
         }
-      );
-    }
+      }
+      // Stop MQTT publishing and resolve alerts if device turned off
+      else {
+        if (activeIntervals.has(deviceIdStr)) {
+          clearInterval(activeIntervals.get(deviceIdStr));
+          activeIntervals.delete(deviceIdStr);
+        }
 
-    if (io) {
-      io.emit("device_update");
-      io.emit("analytics_update");
-    }
+        // Resolve all device alerts using proper model
+        try {
+          await Alert.updateMany(
+            { deviceId: device._id, resolved: false },
+            { resolved: true, resolvedAt: new Date() }
+          );
+        } catch (alertErr) {
+          console.error("Alert resolution error:", alertErr.message);
+        }
+      }
 
-    res.json(device);
+      // Emit socket events
+      if (io) {
+        io.emit("device_update");
+        io.emit("analytics_update");
+      }
+
+      res.json(device);
+    } finally {
+      deviceLocks.delete(deviceId);
+    }
   } catch (err) {
     console.error("Toggle device error:", err);
-    res.status(500).json({ error: "Toggle failed" });
+    res.status(500).json({ error: "Toggle failed", details: err.message });
   }
 };

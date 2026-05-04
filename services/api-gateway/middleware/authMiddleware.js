@@ -8,7 +8,15 @@ module.exports = (req, res, next) => {
       return res.status(401).json({ error: "No token provided" });
     }
 
-    const token = authHeader.split(" ")[1];
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Invalid token format" });
+    }
+
+    const token = authHeader.slice(7);
+
+    if (!token) {
+      return res.status(401).json({ error: "No token provided" });
+    }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 

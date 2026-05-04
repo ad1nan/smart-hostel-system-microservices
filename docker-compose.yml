@@ -77,9 +77,9 @@ services:
       - .env
     environment:
       MONGO_URI: mongodb://mongo:27017/hostelDB
-      MQTT_URL: mqtt://mqtt:1883
-      MQTT_USER: hostel_ingest
-      MQTT_PASS: ShsMqtt2026UltraSecure9
+      MQTT_URL: ${MQTT_URL:-mqtt://mqtt:1883}
+      MQTT_USER: ${MQTT_USER:-hostel_ingest}
+      MQTT_PASS: ${MQTT_PASS:-ShsMqtt2026UltraSecure9}
     restart: always
 
   alerts:
@@ -110,9 +110,9 @@ services:
       - .env
     environment:
       MONGO_URI: mongodb://mongo:27017/hostelDB
-      MQTT_URL: mqtt://mqtt:1883
-      MQTT_USER: hostel_ingest
-      MQTT_PASS: ShsMqtt2026UltraSecure9
+      MQTT_URL: ${MQTT_URL:-mqtt://mqtt:1883}
+      MQTT_USER: ${MQTT_USER:-hostel_ingest}
+      MQTT_PASS: ${MQTT_PASS:-ShsMqtt2026UltraSecure9}
     restart: always
 
   auth:
@@ -152,11 +152,36 @@ services:
     build: ./services/seed
     container_name: seed
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
     environment:
       MONGO_URI: mongodb://mongo:27017/hostelDB
     profiles:
       - seed
+
+  fix-devices:
+    build: ./services/seed
+    container_name: fix-devices
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+    command: node fix-devices.js
+    profiles:
+      - fix
+
+  check-devices:
+    build: ./services/seed
+    container_name: check-devices
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/hostelDB
+    command: node check-devices.js
+    profiles:
+      - check
 
 volumes:
   mongo_data:

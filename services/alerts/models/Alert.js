@@ -11,7 +11,8 @@ const schema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Device"
   },
-  resolved: { type: Boolean, default: false }
+  resolved: { type: Boolean, default: false },
+  resolvedAt: Date
 }, { timestamps: true });
 
 schema.index({ deviceId: 1, resolved: 1 });
