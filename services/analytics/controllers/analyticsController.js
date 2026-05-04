@@ -34,29 +34,54 @@ exports.getHeatmap = async (req, res) => {
   }
 };
 
-/* ---------- DEVICE ANALYTICS ---------- */
+/* ---------- DEVICE EFFICIENCY ANALYTICS ---------- */
 exports.getDeviceAnalytics = async (req, res) => {
   try {
+    // Get device energy data and calculate efficiency metrics
     const data = await db.collection("energy").aggregate([
       {
         $group: {
           _id: "$deviceId",
-          totalEnergy: { $sum: "$usage" }
+          totalEnergy: { $sum: "$usage" },
+          avgEnergy: { $avg: "$usage" },
+          maxEnergy: { $max: "$usage" },
+          minEnergy: { $min: "$usage" },
+          usageCount: { $sum: 1 }
         }
       }
     ]).toArray();
 
     const devices = await db.collection("devices").find().toArray();
-    const map = {};
+    const deviceMap = {};
     devices.forEach((d) => {
-      map[d._id.toString()] = d.type;
+      deviceMap[d._id.toString()] = {
+        type: d.type,
+        power: d.power,
+        status: d.status
+      };
     });
 
     res.json(
-      data.map((d) => ({
-        deviceType: map[d._id.toString()] || "Unknown",
-        totalEnergy: Number((d.totalEnergy || 0).toFixed(2))
-      }))
+      data.map((d) => {
+        const deviceInfo = deviceMap[d._id.toString()] || {};
+        const efficiency = deviceInfo.power > 0 ? (d.totalEnergy / deviceInfo.power) * 100 : 0;
+        
+        return {
+          deviceId: d._id,
+          deviceType: deviceInfo.type || "Unknown",
+          power: deviceInfo.power || 0,
+          status: deviceInfo.status || false,
+          totalEnergy: Number((d.totalEnergy || 0).toFixed(2)),
+          avgEnergy: Number((d.avgEnergy || 0).toFixed(2)),
+          maxEnergy: Number((d.maxEnergy || 0).toFixed(2)),
+          minEnergy: Number((d.minEnergy || 0).toFixed(2)),
+          usageCount: d.usageCount || 0,
+          efficiency: Number(efficiency.toFixed(1)),
+          efficiencyRating: efficiency > 80 ? "Excellent" : efficiency > 60 ? "Good" : efficiency > 40 ? "Fair" : "Poor",
+          operatingHours: Math.round((d.totalEnergy || 0) / (deviceInfo.power || 1)),
+          costPerHour: ((deviceInfo.power || 0) / 1000 * 8).toFixed(2) // Assuming Rs. 8 per kWh
+        };
+      })
     );
   } catch (err) {
     console.error("Device analytics error:", err);

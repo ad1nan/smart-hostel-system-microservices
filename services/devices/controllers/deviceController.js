@@ -69,7 +69,6 @@ exports.toggleDevice = async (req, res) => {
     try {
       const device = await Device.findById(deviceId);
       const io = req.app.get("io");
-      const Alert = require("../../alerts/models/Alert");
 
       if (!device) {
         return res.status(404).json({ error: "Device not found" });
@@ -110,15 +109,7 @@ exports.toggleDevice = async (req, res) => {
           activeIntervals.delete(deviceIdStr);
         }
 
-        // Resolve all device alerts using proper model
-        try {
-          await Alert.updateMany(
-            { deviceId: device._id, resolved: false },
-            { resolved: true, resolvedAt: new Date() }
-          );
-        } catch (alertErr) {
-          console.error("Alert resolution error:", alertErr.message);
-        }
+        // Alert resolution will be handled by alerts service
       }
 
       // Emit socket events

@@ -28,8 +28,7 @@ function App() {
     !!localStorage.getItem("token")
   );
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("dash_theme") !== "light");
-  const [compactView, setCompactView] = useState(() => localStorage.getItem("dash_layout") === "compact");
-
+  
   // Decode token once; re-derive on every render so logout clears it immediately
   let user = null;
   try {
@@ -145,10 +144,6 @@ function App() {
   }, [darkMode]);
 
   useEffect(() => {
-    localStorage.setItem("dash_layout", compactView ? "compact" : "expanded");
-  }, [compactView]);
-
-  useEffect(() => {
     localStorage.setItem("rate_per_kwh", String(ratePerKwh));
   }, [ratePerKwh]);
 
@@ -195,8 +190,7 @@ function App() {
       await API.post(`/devices/toggle/${id}`);
       fetchData();
     } catch (err) {
-      if (err.response?.status === 403) alert("Access denied: admin only.");
-      else console.error("Toggle failed:", err.message);
+      console.error("Toggle failed:", err);
     }
   };
 
@@ -406,7 +400,7 @@ function App() {
   if (!isAuthenticated) return <Login onLogin={() => setIsAuthenticated(true)} />;
 
   return (
-    <div className={`app ${darkMode ? "theme-dark" : "theme-light"} ${compactView ? "compact" : "expanded"}`}>
+    <div className={`app ${darkMode ? "theme-dark" : "theme-light"} expanded`}>
       <div className="layout-shell">
         <aside className="side-nav">
           <div className="brand-block">
@@ -439,8 +433,7 @@ function App() {
               <span className="username-label">{user?.username || "–"}</span>
             </div>
             <button className="toggle-pill" onClick={() => setDarkMode((prev) => !prev)}>{darkMode ? "Dark" : "Light"} Mode</button>
-            <button className="toggle-pill" onClick={() => setCompactView((prev) => !prev)}>{compactView ? "Compact" : "Expanded"}</button>
-            <button className="logout-btn" onClick={logout}>Sign out</button>
+                        <button className="logout-btn" onClick={logout}>Sign out</button>
           </div>
         </aside>
         <main className="main-panel">
@@ -630,7 +623,7 @@ function App() {
           <Line data={timeSeriesChartData} />
         </div>
         <div className="card chart-card wide">
-          <h2>Device Type Consumption</h2>
+          <h2>Device Efficiency Analytics</h2>
           <Bar data={deviceChartData} />
         </div>
         <div className="card chart-card wide">
