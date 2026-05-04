@@ -10,11 +10,9 @@ const authMiddleware = require("./middleware/authMiddleware");
 const roleMiddleware = require("./middleware/roleMiddleware");
 
 // Redis setup for rate limiting with fallback
-let redisStore = null;
 let redisClient = null;
 
 try {
-  const RedisStore = require("rate-limit-redis");
   const Redis = require("ioredis");
   
   redisClient = new Redis({
@@ -27,13 +25,25 @@ try {
     console.warn('Redis error (rate limiter degraded):', err.message);
   });
   
-  redisStore = new RedisStore({ 
-    sendCommand: (...args) => redisClient.call(...args) 
-  });
-  
-  console.log('Redis rate limiter initialized');
+  console.log('Redis client initialized');
 } catch (err) {
   console.warn('Redis not available, falling back to memory store:', err.message);
+}
+
+// Helper function to create Redis store with fallback
+function createRedisStore() {
+  if (!redisClient) return null;
+  
+  try {
+    const { RedisStore } = require("rate-limit-redis");
+    return new RedisStore({ 
+      sendCommand: (...args) => redisClient.call(...args),
+      prefix: `rl:${Date.now()}:${Math.random()}` // Unique prefix for each store
+    });
+  } catch (err) {
+    console.warn('Failed to create Redis store:', err.message);
+    return null;
+  }
 }
 
 const app = express();
@@ -72,7 +82,7 @@ const generalLimiter = rateLimit({
   max: GENERAL_RATE_MAX,
   standardHeaders: true,
   legacyHeaders: false,
-  store: redisStore,
+  store: createRedisStore(),
   // In local docker setups, all browser traffic appears from one IP.
   // Skipping localhost avoids accidental lockouts during normal dashboard polling.
   skip: (req) => !isProduction && (req.ip === "::1" || req.ip === "127.0.0.1" || req.ip === "::ffff:127.0.0.1"),
@@ -85,7 +95,7 @@ const authLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: redisStore,
+  store: createRedisStore(),
   message: { error: "Too many login attempts, please try again in 15 minutes." }
 });
 
