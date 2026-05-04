@@ -10,7 +10,7 @@ exports.getDevices = async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const skip = (page - 1) * limit;
     const [devices, total] = await Promise.all([
-      Device.find().skip(skip).limit(limit),
+      Device.find().populate('roomId').skip(skip).limit(limit),
       Device.countDocuments()
     ]);
     res.json({ data: devices, page, limit, total, totalPages: Math.ceil(total / limit) });

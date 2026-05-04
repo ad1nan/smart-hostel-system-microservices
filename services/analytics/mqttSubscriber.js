@@ -12,7 +12,7 @@ const client = mqtt.connect(mqttUrl, {
   connectTimeout: 10000
 });
 
-const ENERGY_THRESHOLD = 20; // room energy threshold (Wh)
+const ENERGY_THRESHOLD = 500; // room energy threshold (Wh)
 const DEVICE_TIME_LIMIT = 60 * 1000; // 1 min
 const HIGH_POWER_THRESHOLD = 100; // optional device power alert
 

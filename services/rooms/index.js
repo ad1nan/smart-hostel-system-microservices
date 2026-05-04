@@ -7,6 +7,9 @@ const cors = require("cors");
 const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
+
+// Room model must be imported so Mongoose registers it before routes use it
+require("./models/Room");
 const jwtSecret = process.env.JWT_SECRET || "";
 if (jwtSecret.length < 32) {
   console.error("JWT_SECRET must be set and at least 32 characters long.");

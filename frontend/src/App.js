@@ -155,7 +155,7 @@ function App() {
   // Energy helpers
   const getRoomEnergy = useCallback((roomId) => {
     const row = roomAnalytics.find(
-      (r) => r.roomId === roomId || r.roomId?._id === roomId || r._id === roomId
+      (r) => String(r.roomId) === String(roomId) || String(r.roomId?._id) === String(roomId) || String(r._id) === String(roomId)
     );
     return Number(row?.totalUsage ?? row?.totalEnergy ?? 0);
   }, [roomAnalytics]);
@@ -172,7 +172,7 @@ function App() {
       const v = Number(r.totalUsage ?? r.totalEnergy ?? 0);
       if (v > topVal) {
         topVal = v;
-        const match = rooms.find((rm) => rm._id === r.roomId || rm._id === r._id);
+        const match = rooms.find((rm) => String(rm._id) === String(r.roomId) || String(rm._id) === String(r._id));
         topRoom = match?.name || "";
       }
     });
@@ -220,14 +220,14 @@ function App() {
   };
 
   const alertRoomIds = useMemo(
-    () => new Set(alerts.map((a) => a.roomId?._id || a.roomId).filter(Boolean)),
+    () => new Set(alerts.map((a) => String(a.roomId?._id || a.roomId)).filter(Boolean)),
     [alerts]
   );
 
   const roomDevicesMap = useMemo(() => {
     const map = new Map();
     devices.forEach((device) => {
-      const roomId = typeof device.roomId === "object" ? device.roomId?._id : device.roomId;
+      const roomId = String(typeof device.roomId === "object" ? device.roomId?._id : device.roomId);
       if (!roomId) return;
       if (!map.has(roomId)) map.set(roomId, []);
       map.get(roomId).push(device);
@@ -244,7 +244,7 @@ function App() {
     });
 
     return sortedRooms.map((room, idx) => {
-      const deviceList = roomDevicesMap.get(room._id) || [];
+      const deviceList = roomDevicesMap.get(String(room._id)) || [];
       const activeCount = deviceList.filter((d) => d.status).length;
       const roomEnergy = getRoomEnergy(room._id);
       const intensity = Math.min(1, roomEnergy / maxEnergy);
@@ -305,7 +305,7 @@ function App() {
         id: room._id,
         name: room.name,
         energy: getRoomEnergy(room._id),
-        devices: (roomDevicesMap.get(room._id) || []).length
+        devices: (roomDevicesMap.get(String(room._id)) || []).length
       }))
       .sort((a, b) => b.energy - a.energy)
       .slice(0, 6);
@@ -525,7 +525,7 @@ function App() {
           {visibleRooms.map((room) => (
             <button
               key={room._id}
-              className={`blueprint-cell ${alertRoomIds.has(room._id) ? "has-alert" : ""}`}
+              className={`blueprint-cell ${alertRoomIds.has(String(room._id)) ? "has-alert" : ""}`}
               style={{ "--room-intensity": room.intensity }}
               onClick={() => setSelectedRoom(room)}
             >
@@ -664,7 +664,7 @@ function App() {
                   <td>{row.name}</td>
                   <td>{row.energy.toFixed(2)}</td>
                   <td>{row.devices}</td>
-                  <td>{alertRoomIds.has(row.id) ? "Active" : "Clear"}</td>
+                  <td>{alertRoomIds.has(String(row.id)) ? "Active" : "Clear"}</td>
                 </tr>
               ))}
             </tbody>
@@ -723,7 +723,7 @@ function App() {
             {devices
               .filter((d) => {
                 const rid = typeof d.roomId === "object" ? d.roomId._id : d.roomId;
-                return rid === selectedRoom._id;
+                return String(rid) === String(selectedRoom._id);
               })
               .map((device) => (
                 <div key={device._id} className="device-row">

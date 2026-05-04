@@ -24,7 +24,7 @@ exports.getHeatmap = async (req, res) => {
 
     res.json(
       data.map((d) => ({
-        roomId: d._id,
+        roomId: d._id.toString(),
         totalEnergy: Number((d.totalEnergy || 0).toFixed(2))
       }))
     );
@@ -156,7 +156,7 @@ exports.getForecast = async (req, res) => {
       }
 
       return {
-        roomId: entry._id,
+        roomId: entry._id.toString(),
         roomName: roomNameMap[entry._id.toString()] || "Unknown",
         method,
         forecastNextHourWh: Number(Math.max(0, predicted).toFixed(2)),
@@ -200,7 +200,7 @@ exports.getRoomCosts = async (req, res) => {
         const totalWh = Number(row.totalWh || 0);
         const costINR = (totalWh / 1000) * ratePerKwh;
         return {
-          roomId: row._id,
+          roomId: row._id.toString(),
           roomName: room.name || "Unknown",
           floor: room.floor ?? null,
           totalWh: Number(totalWh.toFixed(2)),

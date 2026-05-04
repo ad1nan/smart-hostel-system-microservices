@@ -11,6 +11,20 @@ app.use(express.json());
 // Device model must be imported so Mongoose registers it before routes use it
 require("./models/Device");
 
+// Room model must be imported for device population to work
+// Define Room model directly to ensure proper registration
+const Room = mongoose.model("Room", new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  floor: { type: Number, default: 1 },
+  roomType: {
+    type: String,
+    enum: ["2ppl", "4ppl", "single", "suite"],
+    default: "2ppl"
+  },
+  capacity: { type: Number, default: 2, min: 1 },
+  occupancy: { type: Number, default: 0, min: 0 }
+}));
+
 app.use("/devices", require("./routes/deviceRoutes"));
 
 app.get("/", (req, res) => res.send("Devices Service running"));
