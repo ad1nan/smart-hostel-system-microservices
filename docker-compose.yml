@@ -37,6 +37,7 @@ services:
       - devices
       - alerts
       - analytics
+      - redis
     env_file:
       - .env
     environment:
@@ -46,6 +47,8 @@ services:
       ANALYTICS_SERVICE_URL: http://analytics:5004
       ROOMS_SERVICE_URL: http://rooms:5001
       DEVICES_SERVICE_URL: http://devices:5002
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       ALLOWED_ORIGINS: http://localhost:3000
     restart: always
 
@@ -148,6 +151,19 @@ services:
       start_period: 10s
     restart: always
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: always
+
   seed:
     build: ./services/seed
     container_name: seed
@@ -186,3 +202,4 @@ services:
 volumes:
   mongo_data:
   mqtt_data:
+  redis_data:

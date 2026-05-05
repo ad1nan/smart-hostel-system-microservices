@@ -17,14 +17,6 @@ spec:
     spec:
       securityContext:
         runAsUser: 0
-      initContainers:
-      - name: fix-passwd
-        image: busybox:1.35
-        command: ['sh', '-c', 'chown 1883:1883 /mosquitto/config/passwd && chmod 0700 /mosquitto/config/passwd']
-        volumeMounts:
-        - name: mosquitto-passwd
-          mountPath: /mosquitto/config/passwd
-          subPath: passwd
       containers:
       - name: mosquitto
         image: eclipse-mosquitto:2

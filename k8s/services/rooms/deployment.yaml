@@ -20,7 +20,7 @@ spec:
         image: smart-hostel-rooms:latest
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 5001
+        - containerPort: 4000
           name: rooms
         envFrom:
         - configMapRef:
@@ -30,7 +30,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 5001
+            port: 4000
           initialDelaySeconds: 20
           periodSeconds: 15
           timeoutSeconds: 5
@@ -38,7 +38,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health
-            port: 5001
+            port: 4000
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 3

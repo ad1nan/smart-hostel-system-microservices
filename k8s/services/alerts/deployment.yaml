@@ -20,7 +20,7 @@ spec:
         image: smart-hostel-alerts:latest
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 5003
+        - containerPort: 4000
           name: alerts
         envFrom:
         - configMapRef:
@@ -30,7 +30,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 5003
+            port: 4000
           initialDelaySeconds: 20
           periodSeconds: 15
           timeoutSeconds: 5
@@ -38,7 +38,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health
-            port: 5003
+            port: 4000
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 3
